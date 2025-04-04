@@ -1,0 +1,103 @@
+name: Automatic Release
+
+on:
+  push:
+    branches:
+      - main
+
+# Add permissions section here
+permissions:
+  contents: write
+  packages: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24.1'
+          cache: true
+
+      - name: Install dependencies
+        run: make deps
+
+      # Skip linting and only run tests
+      - name: Run tests
+        run: make test-short
+
+      - name: Get version
+        id: get_version
+        run: |
+          # Extract version from git tag or use v0.0.0 as default
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          
+          # Increment patch version
+          BASE_VERSION=${LATEST_TAG#v}
+          IFS='.' read -ra VERSION_PARTS <<< "$BASE_VERSION"
+          MAJOR=${VERSION_PARTS[0]:-0}
+          MINOR=${VERSION_PARTS[1]:-0}
+          PATCH=${VERSION_PARTS[2]:-0}
+          
+          # Increment patch version
+          PATCH=$((PATCH + 1))
+          
+          NEW_VERSION="v$MAJOR.$MINOR.$PATCH"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "Generated version: $NEW_VERSION"
+
+      - name: Build cross-platform binaries
+        run: |
+          # Export the version for the Makefile to use
+          export VERSION="${{ steps.get_version.outputs.version }}"
+          # Only build Linux binary which works properly with CGO
+          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags="-X main.Version=${VERSION} -X main.BuildTime=$(date -u '+%Y-%m-%d_%H:%M:%S') -X main.CommitHash=$(git rev-parse HEAD) -X 'main.Author=Ahmed ElSebaei' -X 'main.Email=tildaslashalef@gmail.com'" -o bin/mindnest-linux-amd64 ./cmd/mindnest
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get commits since last tag
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$LATEST_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"- %s (%h)" -n 10)
+          else
+            COMMITS=$(git log $LATEST_TAG..HEAD --pretty=format:"- %s (%h)")
+          fi
+          
+          # If no commits found, get the last 10 commits
+          if [ -z "$COMMITS" ]; then
+            COMMITS=$(git log --pretty=format:"- %s (%h)" -n 10)
+          fi
+          
+          # Create changelog file
+          echo "## What's Changed" > changelog.md
+          echo "$COMMITS" >> changelog.md
+          echo "" >> changelog.md
+          echo "**Full Changelog**: https://github.com/${{ github.repository }}/commits/${{ github.sha }}" >> changelog.md
+          
+          # Set output
+          CHANGELOG=$(cat changelog.md)
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.get_version.outputs.version }}
+          name: Release ${{ steps.get_version.outputs.version }}
+          body: ${{ steps.changelog.outputs.changelog }}
+          draft: false
+          prerelease: false
+          files: |
+            bin/mindnest-linux-amd64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
