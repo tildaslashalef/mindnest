@@ -96,6 +96,7 @@ func main() {
 			commands.WorkspaceCommand(),
 			commands.MigrateCommand(),
 			commands.SyncCommand(),
+			commands.InitCommand(),
 		},
 		Action: func(c *cli.Context) error {
 			// Default action is to run the review command

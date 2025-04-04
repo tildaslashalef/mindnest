@@ -21,6 +21,7 @@ Mindnest is an LLM-powered code review tool designed to help developers improve 
 - Intelligent code chunking and similarity search
 - Vector database for storing and retrieving code embeddings
 - Privacy-first: all processing happens locally on your machine
+- Zero-configuration: embedded migrations and automatic setup
 
 ## Installation
 
@@ -68,14 +69,31 @@ make install
 
 ### Configuration
 
-Mindnest uses environment variables for configuration. You can set these in your shell or use a `.env` file in the working directory.
+Mindnest now features a zero-configuration setup! On first run, it will:
 
-A sample configuration file is provided at `.env.sample`. Copy it to `.env` and modify as needed:
+1. Create a `.mindnest` directory in your home folder
+2. Create and initialize the SQLite database with all necessary tables
+3. Extract a sample `.env` configuration file to this directory
 
-```bash
-cp .env.sample .env
-# Edit .env with your preferred settings
-```
+To customize your configuration:
+
+1. Edit the `.env` file in your `~/.mindnest/` directory:
+   ```bash
+   # View the sample configuration
+   cat ~/.mindnest/.env
+   
+   # Edit with your preferred editor
+   vim ~/.mindnest/.env
+   ```
+
+2. Alternatively, you can use environment variables or a `.env` file in your current directory to override settings.
+
+3. To specify a custom configuration file location:
+   ```bash
+   export ENV_FILE_PATH=/path/to/your/.env
+   ```
+
+All data including the database, embeddings, and configuration will be stored in your `~/.mindnest/` directory by default.
 
 ### Installing and Running Ollama
 
@@ -115,10 +133,22 @@ You can configure which models to use in your `.env` file.
 
 ## Usage
 
+```bash
+# Initialize Mindnest environment (first-time setup or after upgrading)
+mindnest init
+```
+
+The `init` command sets up your Mindnest environment by:
+- Creating the `~/.mindnest` directory to store all application data
+- Setting up the SQLite database with all required tables
+- Extracting a sample configuration file to `~/.mindnest/.env`
+- Showing paths to important files (config, database, logs)
+
+You should run this command when first installing Mindnest or after upgrading to a new version to ensure your database schema stays up-to-date.
 
 ```bash
 # Review staged changes in the current Git repository (default)
-cd /path/to/project && mindnest 
+cd /path/to/project && mindnest
 
 # Review specific commit
 cd /path/to/project && mindnest  --commit <commit-hash>
@@ -126,10 +156,8 @@ cd /path/to/project && mindnest  --commit <commit-hash>
 # Review differences between branches
 cd /path/to/project && mindnest  --branch <branch-name>
 
-
 # Set Github repository URL to submit PR comments
 mindnest ws -g <github-repo-url>
-
 
 # List current Workspace issues to review
 mindnest ws 

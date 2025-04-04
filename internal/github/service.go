@@ -104,12 +104,6 @@ func (s *Service) SubmitPRComment(ctx context.Context, comment *PRComment) error
 		return fmt.Errorf("unable to determine GitHub repository owner/repo; ensure workspace has a valid GitRepoURL")
 	}
 
-	s.logger.Info("Submitting comment to GitHub PR",
-		"repo", fmt.Sprintf("%s/%s", owner, repo),
-		"pr", comment.PRNumber,
-		"file", comment.FilePath,
-		"line", comment.LineStart)
-
 	// First, get the PR to fetch the latest commit SHA
 	pr, _, err := s.client.GetPullRequest(ctx, owner, repo, comment.PRNumber)
 	if err != nil {
@@ -133,8 +127,10 @@ func (s *Service) SubmitPRComment(ctx context.Context, comment *PRComment) error
 		Body:     github.String(comment.Commentary),
 	}
 
-	// Set line number instead of position - use LineStart as the primary line
-	if comment.LineStart > 0 {
+	// Set line number instead of position - use LineEnd as the primary line
+	if comment.LineEnd > 0 {
+		prComment.Line = github.Int(comment.LineEnd)
+	} else if comment.LineStart > 0 {
 		prComment.Line = github.Int(comment.LineStart)
 	}
 

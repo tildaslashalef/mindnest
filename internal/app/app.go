@@ -34,8 +34,8 @@ type App struct {
 
 // New initializes a new application instance with all its dependencies
 func New() (*App, error) {
-	// Load configuration
-	cfg, err := config.LoadFromEnv()
+	// Load configuration with default paths, not in initialization mode
+	cfg, err := config.LoadFromEnv("", "", false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load configuration: %w", err)
 	}
@@ -43,30 +43,23 @@ func New() (*App, error) {
 	// Set the global configuration
 	config.Set(cfg)
 
-	// Skip full logger initialization if log level is "none", but ensure we have a noop logger
-	if cfg.Logging.Level != "none" {
-		// Initialize logger early so we can log
-		err = loggy.Init(loggy.Config{
-			Level:      config.ParseLogLevel(cfg.Logging.Level),
-			Format:     cfg.Logging.Format,
-			Output:     cfg.Logging.Output,
-			AddSource:  cfg.Logging.AddSource,
-			TimeFormat: cfg.Logging.TimeFormat,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize logger: %w", err)
-		}
-
-		// Log initialization information
-		loggy.Info("Application initializing",
-			"version", os.Getenv("VERSION"),
-			"log_level", cfg.Logging.Level,
-			"migrations_path", cfg.Database.MigrationsPath,
-		)
-	} else {
-		// Create a no-op logger that won't output anything but won't crash
-		loggy.NewNoopLogger()
+	// Initialize logger early so we can log
+	err = loggy.Init(loggy.Config{
+		Level:      config.ParseLogLevel(cfg.Logging.Level),
+		Format:     cfg.Logging.Format,
+		Output:     cfg.Logging.Output,
+		AddSource:  cfg.Logging.AddSource,
+		TimeFormat: cfg.Logging.TimeFormat,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize logger: %w", err)
 	}
+
+	// Log initialization information
+	loggy.Info("Application initializing",
+		"version", os.Getenv("VERSION"),
+		"log_level", cfg.Logging.Level,
+	)
 
 	// 4. Ensure necessary directories exist
 	if err := ensureDirectories(cfg); err != nil {

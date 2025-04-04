@@ -15,10 +15,10 @@ import (
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/sqlite3"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/tildaslashalef/mindnest/internal/config"
 	"github.com/tildaslashalef/mindnest/internal/loggy"
+	"github.com/tildaslashalef/mindnest/internal/migrations"
 )
 
 var (
@@ -83,6 +83,9 @@ func InitDB(cfg *config.Config) error {
 		// Don't fail the entire database initialization if vector extension fails
 		// This allows the application to still work without vector functionality
 	}
+
+	// Note: Migrations are now handled by the 'init' command
+	// and not automatically on database initialization
 
 	loggy.Info("Database initialized successfully")
 	return nil
@@ -210,58 +213,78 @@ func WithTransaction(ctx context.Context, fn func(*sql.Tx) error) error {
 	return tx.Commit()
 }
 
-// RunMigrations applies all pending migrations
-func RunMigrations(migrationsPath string) error {
+// RunMigrations applies all pending migrations using embedded SQL files
+// Returns the number of migrations applied (0 if no changes)
+func RunMigrations() (int, error) {
 	if db == nil {
-		return ErrNotInitialized
+		return 0, ErrNotInitialized
 	}
 
 	driver, err := sqlite3.WithInstance(db, &sqlite3.Config{})
 	if err != nil {
-		return fmt.Errorf("failed to create database driver: %w", err)
+		return 0, fmt.Errorf("failed to create database driver: %w", err)
 	}
 
-	// Remove 'file://' prefix if present and ensure path is clean
-	cleanPath := strings.TrimPrefix(migrationsPath, "file://")
-	sourceURL := "file://" + cleanPath
+	// Get migration source from embedded migrations
+	sourceDriver, err := migrations.GetSource()
+	if err != nil {
+		loggy.Error("Failed to access embedded migrations", "error", err)
+		return 0, fmt.Errorf("failed to access embedded migrations: %w", err)
+	}
 
-	loggy.Info("Using migrations source URL", "url", sourceURL)
-
-	// Create migration instance
-	m, err := migrate.NewWithDatabaseInstance(
-		sourceURL,
+	// Get current version before migrations
+	var beforeVersion int
+	m, err := migrate.NewWithInstance(
+		"embedded",
+		sourceDriver,
 		"sqlite3",
 		driver,
 	)
 	if err != nil {
 		loggy.Error("Failed to create migration instance", "error", err)
-		return fmt.Errorf("failed to create migration instance: %w", err)
+		return 0, fmt.Errorf("failed to create migration instance: %w", err)
 	}
 	defer m.Close()
+
+	// Store the version before migrations
+	version, _, vErr := m.Version()
+	if vErr != nil && vErr != migrate.ErrNilVersion {
+		loggy.Warn("Failed to get current migration version", "error", vErr)
+		// Continue anyway, assume version 0
+		beforeVersion = 0
+	} else {
+		beforeVersion = int(version)
+	}
 
 	// Apply migrations
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		loggy.Error("Failed to apply migrations", "error", err)
-		return fmt.Errorf("failed to apply migrations: %w", err)
+		return 0, fmt.Errorf("failed to apply migrations: %w", err)
 	}
 
 	// Get the version after migration
-	version, dirty, err := m.Version()
+	afterVersion, dirty, err := m.Version()
 	if err != nil && err != migrate.ErrNilVersion {
-		return fmt.Errorf("failed to get migration version: %w", err)
+		return 0, fmt.Errorf("failed to get migration version: %w", err)
+	}
+
+	// Calculate how many migrations were applied
+	migrationsApplied := 0
+	if err != migrate.ErrNilVersion {
+		migrationsApplied = int(afterVersion) - beforeVersion
 	}
 
 	loggy.Info("Database migration complete",
-		"version", version,
+		"version", afterVersion,
 		"dirty", dirty,
-		"error", err == migrate.ErrNilVersion,
+		"applied", migrationsApplied,
 	)
 
-	return nil
+	return migrationsApplied, nil
 }
 
 // RevertMigrations reverts migrations back by the specified number of steps
-func RevertMigrations(migrationsPath string, steps int) error {
+func RevertMigrations(steps int) error {
 	if db == nil {
 		return ErrNotInitialized
 	}
@@ -271,15 +294,17 @@ func RevertMigrations(migrationsPath string, steps int) error {
 		return fmt.Errorf("failed to create database driver: %w", err)
 	}
 
-	// Remove 'file://' prefix if present and ensure path is clean
-	cleanPath := strings.TrimPrefix(migrationsPath, "file://")
-	sourceURL := "file://" + cleanPath
+	// Get migration source from embedded migrations
+	sourceDriver, err := migrations.GetSource()
+	if err != nil {
+		loggy.Error("Failed to access embedded migrations", "error", err)
+		return fmt.Errorf("failed to access embedded migrations: %w", err)
+	}
 
-	loggy.Info("Using migrations source URL", "url", sourceURL)
-
-	// Create migration instance
-	m, err := migrate.NewWithDatabaseInstance(
-		sourceURL,
+	// Create migration instance with the embedded source
+	m, err := migrate.NewWithInstance(
+		"embedded",
+		sourceDriver,
 		"sqlite3",
 		driver,
 	)

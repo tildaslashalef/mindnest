@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -10,22 +11,60 @@ import (
 )
 
 // LoadFromEnv loads configuration from environment variables
-func LoadFromEnv() (*Config, error) {
+// Parameters:
+// - configDir: Directory containing config files (or empty for default)
+// - configFilePath: Path to .env file (or empty for default)
+// - isInitializing: Whether this is being called during explicit initialization (e.g., from init command)
+func LoadFromEnv(configDir string, configFilePath string, isInitializing bool) (*Config, error) {
 	// Load empty configuration
 	cfg := New()
-	homeDir := filepath.Dir(filepath.Dir(cfg.Database.Path))
-	appDir := filepath.Join(homeDir, "Code", "mindnest")
 
-	// Check if ENV_FILE_PATH is set to load from a .env file
+	// If configDir is empty, use the default
+	if configDir == "" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get user home directory: %w", err)
+		}
+		configDir = filepath.Join(homeDir, ".mindnest")
+
+		// Create directory if it doesn't exist, but only do minimal setup if not initializing
+		if err := os.MkdirAll(configDir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create config directory: %w", err)
+		}
+
+		// If we're initializing, set up config directory with all necessary files
+		if isInitializing {
+			// We don't call SetupConfigDirectory here because the init command does it explicitly
+			// after creating the directory to maintain control over the process
+		}
+	}
+
+	// Default database path is in the config directory
+	cfg.Database.Path = filepath.Join(configDir, "mindnest.db")
+
+	// Default log path is in the config directory
+	defaultLogPath := filepath.Join(configDir, "mindnest.log")
+
+	// Use provided config file path or default
+	if configFilePath == "" {
+		configFilePath = filepath.Join(configDir, ".env")
+	}
+
+	// Check if ENV_FILE_PATH is set to load from a custom .env file
 	envFilePath := getEnvString("ENV_FILE_PATH", "")
 	if envFilePath != "" {
+		// User specified a custom env file path
 		err := godotenv.Load(envFilePath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load env file: %w", err)
+			return nil, fmt.Errorf("failed to load env file from %s: %w", envFilePath, err)
 		}
 	} else {
-		// Try to load .env from current directory
-		_ = godotenv.Load() // Ignore errors if file doesn't exist
+		// Try to load from config directory first
+		err := godotenv.Load(configFilePath)
+		if err != nil {
+			// Then try current directory as fallback
+			_ = godotenv.Load() // Ignore errors if file doesn't exist
+		}
 	}
 
 	// LLM Configuration
@@ -102,14 +141,13 @@ func LoadFromEnv() (*Config, error) {
 		ForeignKeys:     getEnvBool("MINDNEST_DB_FOREIGN_KEYS", true),
 		ConnMaxLife:     getEnvDuration("MINDNEST_DB_CONN_MAX_LIFE", 5*time.Minute),
 		QueryTimeout:    getEnvDuration("MINDNEST_DB_QUERY_TIMEOUT", 30*time.Second),
-		MigrationsPath:  getEnvString("MINDNEST_DB_MIGRATIONS_PATH", filepath.Join(appDir, "migrations")),
 	}
 
 	// Logging Configuration
 	cfg.Logging = LoggingConfig{
 		Level:      getEnvString("MINDNEST_LOG_LEVEL", "info"),
 		Format:     getEnvString("MINDNEST_LOG_FORMAT", "text"),
-		Output:     getEnvString("MINDNEST_LOG_OUTPUT", "stdout"),
+		Output:     getEnvString("MINDNEST_LOG_OUTPUT", defaultLogPath),
 		AddSource:  getEnvBool("MINDNEST_LOG_ADD_SOURCE", true),
 		TimeFormat: getEnvString("MINDNEST_LOG_TIME_FORMAT", time.RFC3339),
 	}

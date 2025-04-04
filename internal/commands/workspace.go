@@ -1104,7 +1104,7 @@ func (m WorkspaceModel) submitIssueToGitHub(issueID string) tea.Cmd {
 			"workspace_id", m.workspace.ID,
 			"pr_number", prComment.PRNumber,
 			"file", prComment.FilePath,
-			"line", prComment.LineStart)
+			"line", prComment.LineEnd)
 
 		// Use the agnostic SubmitPRComment method
 		err := m.app.GitHub.SubmitPRComment(ctx, prComment)

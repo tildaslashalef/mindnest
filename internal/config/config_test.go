@@ -246,9 +246,8 @@ func TestNew(t *testing.T) {
 	// New should return a bare-bones config with minimal fields set
 	cfg := New()
 
-	// Only database path is expected to be set
-	assert.NotEmpty(t, cfg.Database.Path, "Database path should be set")
-	assert.Contains(t, cfg.Database.Path, ".mindnest", "Database path should contain .mindnest directory")
+	// Database path should not be set in New() anymore - it's set in LoadFromEnv()
+	assert.Empty(t, cfg.Database.Path, "Database path should be empty")
 
 	// All other fields should be at zero values
 	assert.Empty(t, cfg.LLM.DefaultProvider)
@@ -274,7 +273,7 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 
 	// Load config with defaults
-	cfg, err := LoadFromEnv()
+	cfg, err := LoadFromEnv("", "", false)
 	assert.NoError(t, err)
 
 	// Verify default values are set correctly
@@ -322,7 +321,7 @@ func TestSetGet(t *testing.T) {
 
 func TestValidate(t *testing.T) {
 	// Valid config from LoadFromEnv should pass validation
-	cfg, err := LoadFromEnv()
+	cfg, err := LoadFromEnv("", "", false)
 	assert.NoError(t, err)
 	err = cfg.Validate()
 	assert.NoError(t, err)
@@ -398,7 +397,7 @@ func TestValidate(t *testing.T) {
 	invalidLogging.Database.BusyTimeout = 5000
 	invalidLogging.Database.ConnMaxLife = 5 * time.Minute
 	invalidLogging.Database.QueryTimeout = 30 * time.Second
-	invalidLogging.Database.MigrationsPath = filepath.Join(os.TempDir(), "migrations")
+
 	// Set invalid Logging value
 	invalidLogging.Logging.Level = "invalid"
 	invalidLogging.Logging.Format = "text"

@@ -90,7 +90,6 @@ type DatabaseConfig struct {
 	ForeignKeys     bool          `yaml:"foreign_keys"`
 	ConnMaxLife     time.Duration `yaml:"conn_max_life"`
 	QueryTimeout    time.Duration `yaml:"query_timeout"`
-	MigrationsPath  string        `yaml:"migrations_path"`
 }
 
 // LoggingConfig represents logging configuration
@@ -149,13 +148,6 @@ type ServerConfig struct {
 
 // New returns a new empty Config
 func New() *Config {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		homeDir = "."
-	}
-
-	configDir := filepath.Join(homeDir, ".mindnest")
-
 	return &Config{
 		LLM:       LLMConfig{},
 		Ollama:    OllamaConfig{},
@@ -164,11 +156,9 @@ func New() *Config {
 		Context:   ContextConfig{},
 		GitHub:    GitHubConfig{},
 		Workspace: WorkspaceConfig{},
-		Database: DatabaseConfig{
-			Path: filepath.Join(configDir, "mindnest.db"),
-		},
-		Logging: LoggingConfig{},
-		Server:  ServerConfig{},
+		Database:  DatabaseConfig{},
+		Logging:   LoggingConfig{},
+		Server:    ServerConfig{},
 	}
 }
 
@@ -316,10 +306,6 @@ func (c *Config) validateDatabase() error {
 
 	if c.Database.QueryTimeout <= 0 {
 		return fmt.Errorf("query timeout must be positive")
-	}
-
-	if c.Database.MigrationsPath == "" {
-		return fmt.Errorf("migrations path cannot be empty")
 	}
 
 	return nil

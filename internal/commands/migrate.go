@@ -8,10 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/fatih/color"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
-	"github.com/tildaslashalef/mindnest/internal/app"
 	"github.com/tildaslashalef/mindnest/internal/database"
+	"github.com/tildaslashalef/mindnest/internal/utils"
 	"github.com/urfave/cli/v2"
 )
 
@@ -26,22 +25,23 @@ func MigrateCommand() *cli.Command {
 				Name:  "up",
 				Usage: "Apply all pending migrations",
 				Action: func(c *cli.Context) error {
-					// App is already initialized in Before hook
-					application, err := getAppFromContext(c)
-					if err != nil {
-						return err
-					}
+					// We no longer need the application instance for migrations
+					// since they're embedded in the binary
 
-					migrationsPath := application.Config.Database.MigrationsPath
-
-					fmt.Println(color.CyanString("Applying migrations from %s", migrationsPath))
+					utils.PrintInfo("Applying embedded migrations")
 
 					// Use the public RunMigrations function
-					if err := database.RunMigrations(migrationsPath); err != nil {
+					migrationsApplied, err := database.RunMigrations()
+					if err != nil {
+						utils.PrintError(fmt.Sprintf("Failed to apply migrations: %s", err))
 						return fmt.Errorf("failed to apply migrations: %w", err)
 					}
 
-					fmt.Println(color.GreenString("✓ Migrations applied successfully!"))
+					if migrationsApplied > 0 {
+						utils.PrintSuccess(fmt.Sprintf("Applied %d migration(s) successfully!", migrationsApplied))
+					} else {
+						utils.PrintSuccess("Database schema is already up-to-date")
+					}
 					return nil
 				},
 			},
@@ -56,28 +56,26 @@ func MigrateCommand() *cli.Command {
 					},
 				},
 				Action: func(c *cli.Context) error {
-					application, err := getAppFromContext(c)
-					if err != nil {
-						return err
-					}
+					// We no longer need the application instance for migrations
+					// since they're embedded in the binary
 
-					migrationsPath := application.Config.Database.MigrationsPath
 					steps := c.Int("steps")
 
-					fmt.Println(color.YellowString("Reverting %d migration(s) using %s", steps, migrationsPath))
+					utils.PrintWarning(fmt.Sprintf("Reverting %d embedded migration(s)", steps))
 
 					// Use the public RevertMigrations function
-					if err := database.RevertMigrations(migrationsPath, steps); err != nil {
+					if err := database.RevertMigrations(steps); err != nil {
+						utils.PrintError(fmt.Sprintf("Failed to revert migrations: %s", err))
 						return fmt.Errorf("failed to revert migrations: %w", err)
 					}
 
-					fmt.Println(color.GreenString("✓ Migration(s) reverted successfully!"))
+					utils.PrintSuccess("Migration(s) reverted successfully!")
 					return nil
 				},
 			},
 			{
 				Name:  "create",
-				Usage: "Create a new migration",
+				Usage: "Create a new migration (development only)",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:     "name",
@@ -85,31 +83,33 @@ func MigrateCommand() *cli.Command {
 						Usage:    "Name of the migration (eg: create_users_table)",
 						Required: true,
 					},
+					&cli.StringFlag{
+						Name:     "path",
+						Usage:    "Path where migration files will be created",
+						Required: true,
+					},
 				},
 				Action: func(c *cli.Context) error {
 					name := c.String("name")
+					path := c.String("path")
 
-					// Get migrations path from context
-					application, err := getAppFromContext(c)
-					if err != nil {
-						return err
-					}
-
-					// Get migrations directory from config (remove file:// prefix)
-					migrationsPath := strings.TrimPrefix(application.Config.Database.MigrationsPath, "file://")
+					utils.PrintWarning("Note: This command is intended for development use only.")
+					utils.PrintWarning("New migrations will not be automatically embedded in the binary.")
 
 					// Ensure the migrations directory exists
-					if err := os.MkdirAll(migrationsPath, 0755); err != nil {
+					if err := os.MkdirAll(path, 0755); err != nil {
+						utils.PrintError(fmt.Sprintf("Failed to create migrations directory: %s", err))
 						return fmt.Errorf("failed to create migrations directory: %w", err)
 					}
 
 					// Get the next migration number
-					nextNumber, err := getNextMigrationNumber(migrationsPath)
+					nextNumber, err := getNextMigrationNumber(path)
 					if err != nil {
+						utils.PrintError(fmt.Sprintf("Failed to determine next migration number: %s", err))
 						return fmt.Errorf("failed to determine next migration number: %w", err)
 					}
 
-					fmt.Println(color.CyanString("Creating new migration: %s (version %d)", name, nextNumber))
+					utils.PrintInfo(fmt.Sprintf("Creating new migration: %s (version %d)", name, nextNumber))
 
 					// Create filenames using sequential numbering format (000001, 000002, etc)
 					// Use dots instead of underscores for up/down to match golang-migrate expectation
@@ -117,38 +117,29 @@ func MigrateCommand() *cli.Command {
 					downFilename := fmt.Sprintf("%06d_%s.down.sql", nextNumber, name)
 
 					// Create up migration file
-					upFile := filepath.Join(migrationsPath, upFilename)
+					upFile := filepath.Join(path, upFilename)
 					if err := os.WriteFile(upFile, []byte("-- Write your UP migration SQL here\n"), 0644); err != nil {
+						utils.PrintError(fmt.Sprintf("Failed to create up migration file: %s", err))
 						return fmt.Errorf("failed to create up migration file: %w", err)
 					}
 
 					// Create down migration file
-					downFile := filepath.Join(migrationsPath, downFilename)
+					downFile := filepath.Join(path, downFilename)
 					if err := os.WriteFile(downFile, []byte("-- Write your DOWN migration SQL here\n"), 0644); err != nil {
+						utils.PrintError(fmt.Sprintf("Failed to create down migration file: %s", err))
 						return fmt.Errorf("failed to create down migration file: %w", err)
 					}
 
-					fmt.Println(color.GreenString("✓ Migration created successfully!"))
-					fmt.Printf("  Up migration: %s\n", upFile)
-					fmt.Printf("  Down migration: %s\n", downFile)
+					utils.PrintSuccess("Migration created successfully!")
+					utils.PrintInfo(fmt.Sprintf("Up migration: %s", upFile))
+					utils.PrintInfo(fmt.Sprintf("Down migration: %s", downFile))
+					utils.PrintWarning("Remember to copy these files to internal/migrations/sql/ and rebuild to embed them.")
 
 					return nil
 				},
 			},
 		},
 	}
-}
-
-// getAppFromContext retrieves the app instance from the CLI context
-func getAppFromContext(c *cli.Context) (*app.App, error) {
-	if c.App.Metadata == nil || c.App.Metadata["app"] == nil {
-		return nil, fmt.Errorf("app not initialized in context")
-	}
-	application, ok := c.App.Metadata["app"].(*app.App)
-	if !ok {
-		return nil, fmt.Errorf("invalid app type in context")
-	}
-	return application, nil
 }
 
 // getNextMigrationNumber determines the next migration number by scanning
