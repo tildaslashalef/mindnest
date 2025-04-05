@@ -109,21 +109,38 @@ func New(path string, name string, cfg *config.Config) (*Workspace, error) {
 
 // createInitialModelConfig creates the initial model configuration JSON
 func createInitialModelConfig(cfg *config.Config) (json.RawMessage, error) {
-	// Create a map with the model configuration
+	// Get default provider
+	provider := cfg.DefaultLLMProvider
+
+	// Initialize LLM config map
+	llmConfig := map[string]interface{}{
+		"default_provider": cfg.DefaultLLMProvider,
+	}
+
+	// Add provider-specific values
+	switch provider {
+	case "ollama":
+		llmConfig["model"] = cfg.Ollama.Model
+		llmConfig["temperature"] = cfg.Ollama.Temperature
+		llmConfig["max_tokens"] = cfg.Ollama.MaxTokens
+	case "claude":
+		llmConfig["model"] = cfg.Claude.Model
+		llmConfig["temperature"] = cfg.Claude.Temperature
+		llmConfig["max_tokens"] = cfg.Claude.MaxTokens
+	case "gemini":
+		llmConfig["model"] = cfg.Gemini.Model
+		llmConfig["temperature"] = cfg.Gemini.Temperature
+		llmConfig["max_tokens"] = cfg.Gemini.MaxTokens
+	}
+
+	// Create the complete config map
 	configMap := map[string]interface{}{
-		"llm": map[string]interface{}{
-			"default_provider": cfg.LLM.DefaultProvider,
-			"default_model":    cfg.LLM.DefaultModel,
-			"max_tokens":       cfg.LLM.MaxTokens,
-			"temperature":      cfg.LLM.Temperature,
-		},
-		"embedding": map[string]interface{}{
-			"model":            cfg.Embedding.Model,
-			"n_similar_chunks": cfg.Embedding.NSimilarChunks,
-		},
-		"context": map[string]interface{}{
-			"max_files_same_directory": cfg.Context.MaxFilesSameDir,
-			"context_depth":            cfg.Context.ContextDepth,
+		"llm": llmConfig,
+		"rag": map[string]interface{}{
+			"n_similar_chunks":         cfg.RAG.NSimilarChunks,
+			"batch_size":               cfg.RAG.BatchSize,
+			"max_files_same_directory": cfg.RAG.MaxFilesSameDir,
+			"context_depth":            cfg.RAG.ContextDepth,
 		},
 	}
 

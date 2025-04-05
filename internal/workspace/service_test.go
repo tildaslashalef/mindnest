@@ -222,11 +222,11 @@ func TestWorkspaceService(t *testing.T) {
 
 		// Default config for testing
 		testConfig := &config.Config{
-			LLM: config.LLMConfig{
-				DefaultProvider: "ollama",
-				DefaultModel:    "deepseek-r1",
-				MaxTokens:       1000,
-				Temperature:     0.5,
+			DefaultLLMProvider: "ollama",
+			Ollama: config.OllamaConfig{
+				Model:       "deepseek-r1",
+				MaxTokens:   1000,
+				Temperature: 0.5,
 			},
 		}
 
@@ -260,11 +260,11 @@ func TestWorkspaceService(t *testing.T) {
 
 		// Default config for testing
 		testConfig := &config.Config{
-			LLM: config.LLMConfig{
-				DefaultProvider: "ollama",
-				DefaultModel:    "deepseek-r1",
-				MaxTokens:       1000,
-				Temperature:     0.5,
+			DefaultLLMProvider: "ollama",
+			Ollama: config.OllamaConfig{
+				Model:       "deepseek-r1",
+				MaxTokens:   1000,
+				Temperature: 0.5,
 			},
 		}
 

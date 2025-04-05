@@ -391,6 +391,7 @@ func TestHandleErrorResponse(t *testing.T) {
 	client := NewClient(Config{APIKey: "test-key", BaseURL: "https://api.example.com"})
 
 	errorJSON := `{"type":"error","error":{"type":"authentication_error","message":"Invalid API key"}}`
+	errorJSONBytes := []byte(errorJSON)
 
 	// Create a mock response
 	resp := &http.Response{
@@ -398,7 +399,7 @@ func TestHandleErrorResponse(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader(errorJSON)),
 	}
 
-	err := client.handleErrorResponse(resp)
+	err := client.handleErrorResponse(resp, errorJSONBytes)
 	assert.Error(t, err)
 
 	// Check if it's the right type
@@ -408,12 +409,14 @@ func TestHandleErrorResponse(t *testing.T) {
 	assert.Equal(t, "Invalid API key", apiErr.ErrorDetails.Message)
 
 	// Test with malformed JSON
+	badJSON := `{"bad json`
+	badJSONBytes := []byte(badJSON)
 	resp = &http.Response{
 		StatusCode: http.StatusBadRequest,
-		Body:       io.NopCloser(strings.NewReader(`{"bad json`)),
+		Body:       io.NopCloser(strings.NewReader(badJSON)),
 	}
 
-	err = client.handleErrorResponse(resp)
+	err = client.handleErrorResponse(resp, badJSONBytes)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "API error (status 400)")
 }

@@ -1296,8 +1296,8 @@ func performEmbeddingGeneration(m Model) tea.Cmd {
 
 		// Process chunks in smaller batches to avoid overloading the API
 		batchSize := 20
-		if app.Config.Embedding.BatchSize > 0 {
-			batchSize = app.Config.Embedding.BatchSize
+		if app.Config.RAG.BatchSize > 0 {
+			batchSize = app.Config.RAG.BatchSize
 		}
 
 		// Track successful chunks

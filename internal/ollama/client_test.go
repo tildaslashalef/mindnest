@@ -21,7 +21,8 @@ func setupTestServer(t *testing.T, handler http.HandlerFunc) (*httptest.Server, 
 		Endpoint:            server.URL,
 		Timeout:             5 * time.Second,
 		MaxRetries:          1,
-		DefaultModel:        "test-model",
+		Model:               "test-model",
+		EmbeddingModel:      "nomic-embed-text",
 		MaxIdleConns:        10,
 		MaxIdleConnsPerHost: 10,
 		IdleConnTimeout:     30 * time.Second,
@@ -80,7 +81,7 @@ func TestNewClient(t *testing.T) {
 		Endpoint:            "http://localhost:11434",
 		Timeout:             5 * time.Minute,
 		MaxRetries:          3,
-		DefaultModel:        "test-model",
+		Model:               "test-model",
 		MaxIdleConns:        100,
 		MaxIdleConnsPerHost: 100,
 		IdleConnTimeout:     90 * time.Second,
@@ -393,13 +394,11 @@ func TestGenerateCompletion(t *testing.T) {
 }
 
 func TestGenerateEmbedding(t *testing.T) {
-	expectedRequest := EmbeddingRequest{
-		Model: "test-model",
-		Input: "This is a test sentence.",
-	}
+	// No longer specify an expected request with a model - we'll verify it's using the embedding model from config
+	expectedEmbeddingModel := "nomic-embed-text" // This should match the EmbeddingModel in the setupTestServer function
 
 	expectedResponse := EmbeddingResponse{
-		Model:      "test-model",
+		Model:      expectedEmbeddingModel, // This should match the EmbeddingModel in the config
 		Embeddings: [][]float32{{0.1, 0.2, 0.3, 0.4, 0.5}},
 	}
 
@@ -410,7 +409,9 @@ func TestGenerateEmbedding(t *testing.T) {
 		var req EmbeddingRequest
 		err := json.NewDecoder(r.Body).Decode(&req)
 		assert.NoError(t, err, "Should decode request body without error")
-		assert.Equal(t, expectedRequest, req, "Request should match expected request")
+		// Verify the model matches the embedding model from config
+		assert.Equal(t, expectedEmbeddingModel, req.Model, "Should use the embedding model from config")
+		assert.Equal(t, "This is a test sentence.", req.Input, "Request input should match expected")
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(expectedResponse)
@@ -418,7 +419,7 @@ func TestGenerateEmbedding(t *testing.T) {
 	defer server.Close()
 
 	resp, err := client.GenerateEmbedding(context.Background(), EmbeddingRequest{
-		Model: "test-model",
+		// Model is not needed anymore since it's using the embedding model from config
 		Input: "This is a test sentence.",
 	})
 
@@ -482,7 +483,7 @@ func TestErrorHandling(t *testing.T) {
 			name:       "GenerateEmbedding server error",
 			statusCode: http.StatusBadRequest,
 			handler: func(t *testing.T, client *Client) {
-				_, err := client.GenerateEmbedding(context.Background(), EmbeddingRequest{Model: "test-model"})
+				_, err := client.GenerateEmbedding(context.Background(), EmbeddingRequest{Input: "test input"})
 				assert.Error(t, err, "GenerateEmbedding should return an error for server error")
 				assert.Contains(t, err.Error(), "400", "Error should contain the status code")
 			},
@@ -501,7 +502,7 @@ func TestErrorHandling(t *testing.T) {
 				Endpoint:            server.URL,
 				Timeout:             2 * time.Second,
 				MaxRetries:          1,
-				DefaultModel:        "test-model",
+				Model:               "test-model",
 				MaxIdleConns:        10,
 				MaxIdleConnsPerHost: 10,
 				IdleConnTimeout:     30 * time.Second,
@@ -607,12 +608,12 @@ func TestBatchEmbeddings(t *testing.T) {
 		{
 			name: "Multiple embedding requests",
 			requests: []EmbeddingRequest{
-				{Model: "test-model", Input: "This is the first test."},
-				{Model: "test-model", Input: "This is the second test."},
+				{Input: "This is the first test."},
+				{Input: "This is the second test."},
 			},
 			expected: []*EmbeddingResponse{
-				{Model: "test-model", Embeddings: [][]float32{{0.1, 0.2, 0.3}}},
-				{Model: "test-model", Embeddings: [][]float32{{0.4, 0.5, 0.6}}},
+				{Model: "nomic-embed-text", Embeddings: [][]float32{{0.1, 0.2, 0.3}}},
+				{Model: "nomic-embed-text", Embeddings: [][]float32{{0.4, 0.5, 0.6}}},
 			},
 		},
 		{
@@ -632,7 +633,10 @@ func TestBatchEmbeddings(t *testing.T) {
 				err := json.NewDecoder(r.Body).Decode(&req)
 				assert.NoError(t, err, "Should decode request body without error")
 
-				// Find the corresponding response for this request
+				// Verify the model matches the embedding model from config
+				assert.Equal(t, "nomic-embed-text", req.Model, "Should use the embedding model from config")
+
+				// Find the corresponding response for this request based on input
 				for i, request := range tc.requests {
 					if request.Input == req.Input {
 						w.Header().Set("Content-Type", "application/json")

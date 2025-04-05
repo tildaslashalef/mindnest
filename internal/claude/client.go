@@ -2,6 +2,7 @@ package claude
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -25,6 +26,7 @@ type Client struct {
 	maxRetries       int
 	defaultMaxTokens int
 	apiVersion       string
+	useAPIBeta       bool
 	apiBeta          []string
 	topP             *float64
 	topK             *int
@@ -40,6 +42,7 @@ type Config struct {
 	MaxRetries       int           // Maximum retries on retryable errors
 	DefaultMaxTokens int           // Default max tokens for generation
 	APIVersion       string        // API version to use (default: "2023-06-01")
+	UseAPIBeta       bool          // Whether to use API beta features
 	APIBeta          []string      // API beta features to enable
 	TopP             *float64      // Default top_p value
 	TopK             *int          // Default top_k value
@@ -69,6 +72,23 @@ func NewClient(cfg Config) *Client {
 		defaultMaxTokens = 4096
 	}
 
+	// Filter API beta features to ensure no comments or empty values
+	var validBeta []string
+	if cfg.UseAPIBeta {
+		for _, beta := range cfg.APIBeta {
+			beta = strings.TrimSpace(beta)
+			if beta != "" && !strings.HasPrefix(beta, "#") {
+				validBeta = append(validBeta, beta)
+			}
+		}
+
+		if len(validBeta) > 0 {
+			loggy.Info("Claude client initialized with API beta features", "features", validBeta)
+		} else if len(cfg.APIBeta) > 0 {
+			loggy.Warn("Claude client had invalid API beta features that were filtered out", "original", cfg.APIBeta)
+		}
+	}
+
 	return &Client{
 		apiKey:           cfg.APIKey,
 		baseURL:          baseURL,
@@ -77,7 +97,8 @@ func NewClient(cfg Config) *Client {
 		maxRetries:       cfg.MaxRetries,
 		defaultMaxTokens: defaultMaxTokens,
 		apiVersion:       apiVersion,
-		apiBeta:          cfg.APIBeta,
+		useAPIBeta:       cfg.UseAPIBeta && len(validBeta) > 0,
+		apiBeta:          validBeta,
 		topP:             cfg.TopP,
 		topK:             cfg.TopK,
 		temperature:      cfg.Temperature,
@@ -212,11 +233,14 @@ func (c *Client) handleStreamingRequest(ctx context.Context, req ChatRequest, re
 	httpReq.Header.Set("x-api-key", c.apiKey)
 	httpReq.Header.Set("anthropic-version", c.apiVersion)
 
-	// Set API beta headers if specified
-	if len(c.apiBeta) > 0 {
+	// Set API beta headers if specified and we have valid features
+	if c.useAPIBeta && len(c.apiBeta) > 0 {
 		betaHeader, err := json.Marshal(c.apiBeta)
 		if err == nil {
 			httpReq.Header.Set("anthropic-beta", string(betaHeader))
+			loggy.Debug("Setting anthropic-beta header", "beta_features", c.apiBeta)
+		} else {
+			loggy.Warn("Failed to marshal anthropic-beta header", "error", err)
 		}
 	}
 
@@ -227,7 +251,12 @@ func (c *Client) handleStreamingRequest(ctx context.Context, req ChatRequest, re
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return c.handleErrorResponse(resp)
+		// Read the response body for the error
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("reading error response body: %w", err)
+		}
+		return c.handleErrorResponse(resp, respBody)
 	}
 
 	scanner := bufio.NewScanner(resp.Body)
@@ -284,8 +313,11 @@ func (c *Client) handleStreamingRequest(ctx context.Context, req ChatRequest, re
 // It uses exponential backoff for retrying failed requests
 func (c *Client) makeRequest(ctx context.Context, method, path string, body interface{}, response interface{}) error {
 	var bodyReader io.Reader
+	var bodyBytes []byte
+	var err error
+
 	if body != nil {
-		bodyBytes, err := json.Marshal(body)
+		bodyBytes, err = json.Marshal(body)
 		if err != nil {
 			return fmt.Errorf("marshaling request body: %w", err)
 		}
@@ -307,11 +339,25 @@ func (c *Client) makeRequest(ctx context.Context, method, path string, body inte
 	req.Header.Set("x-api-key", c.apiKey)
 	req.Header.Set("anthropic-version", c.apiVersion)
 
-	// Set API beta headers if specified
-	if len(c.apiBeta) > 0 {
+	// Log request headers for debugging (excluding sensitive info)
+	headers := make(map[string]string)
+	for k, v := range req.Header {
+		if k != "x-api-key" { // Don't log the API key
+			headers[k] = strings.Join(v, ", ")
+		} else {
+			headers[k] = "[REDACTED]"
+		}
+	}
+	loggy.Debug("Claude request headers", "headers", headers)
+
+	// Set API beta headers if specified and we have valid features
+	if c.useAPIBeta && len(c.apiBeta) > 0 {
 		betaHeader, err := json.Marshal(c.apiBeta)
 		if err == nil {
 			req.Header.Set("anthropic-beta", string(betaHeader))
+			loggy.Debug("Setting anthropic-beta header", "beta_features", c.apiBeta)
+		} else {
+			loggy.Warn("Failed to marshal anthropic-beta header", "error", err)
 		}
 	}
 
@@ -324,12 +370,39 @@ func (c *Client) makeRequest(ctx context.Context, method, path string, body inte
 		}
 		defer resp.Body.Close()
 
-		if resp.StatusCode != http.StatusOK {
-			lastErr = c.handleErrorResponse(resp)
+		// Read the full response body for debugging
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			lastErr = fmt.Errorf("reading response body: %w", err)
 			return lastErr
 		}
 
-		if err := json.NewDecoder(resp.Body).Decode(response); err != nil {
+		// Log response details
+		loggy.Debug("Claude API response",
+			"status", resp.Status,
+			"status_code", resp.StatusCode,
+			"content_length", len(respBody),
+			"response_body", string(respBody))
+
+		// Create a new reader with the body for json decoding
+		bodyReader = bytes.NewReader(respBody)
+
+		if resp.StatusCode != http.StatusOK {
+			// Log additional response headers for error diagnosis
+			respHeaders := make(map[string]string)
+			for k, v := range resp.Header {
+				respHeaders[k] = strings.Join(v, ", ")
+			}
+			loggy.Error("Claude API error response",
+				"status", resp.Status,
+				"headers", respHeaders,
+				"body", string(respBody))
+
+			lastErr = c.handleErrorResponse(resp, respBody)
+			return lastErr
+		}
+
+		if err := json.NewDecoder(bodyReader).Decode(response); err != nil {
 			return fmt.Errorf("decoding response: %w", err)
 		}
 
@@ -346,14 +419,16 @@ func (c *Client) makeRequest(ctx context.Context, method, path string, body inte
 
 // handleErrorResponse processes error responses from the API
 // It attempts to parse the error JSON and return a structured error
-func (c *Client) handleErrorResponse(resp *http.Response) error {
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("reading error response body: %w", err)
-	}
-
+func (c *Client) handleErrorResponse(resp *http.Response, body []byte) error {
+	// If body is already read, use it directly
 	var apiErr APIError
 	if err := json.Unmarshal(body, &apiErr); err != nil {
+		// Try a more generic approach to see if there's any JSON in the response
+		var genericErr map[string]interface{}
+		if jsonErr := json.Unmarshal(body, &genericErr); jsonErr == nil {
+			loggy.Debug("Parsed generic error response", "error", genericErr)
+		}
+
 		return fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
 	}
 

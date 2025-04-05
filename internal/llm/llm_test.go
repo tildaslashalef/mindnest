@@ -28,9 +28,7 @@ func TestNewFactory(t *testing.T) {
 				Claude: config.ClaudeConfig{
 					APIKey: "",
 				},
-				LLM: config.LLMConfig{
-					DefaultProvider: "ollama",
-				},
+				DefaultLLMProvider: "ollama",
 			},
 			expectOllamaClient: true,
 			expectClaudeClient: false,
@@ -44,9 +42,7 @@ func TestNewFactory(t *testing.T) {
 				Claude: config.ClaudeConfig{
 					APIKey: "test-key",
 				},
-				LLM: config.LLMConfig{
-					DefaultProvider: "claude",
-				},
+				DefaultLLMProvider: "claude",
 			},
 			expectOllamaClient: false,
 			expectClaudeClient: true,
@@ -60,9 +56,7 @@ func TestNewFactory(t *testing.T) {
 				Claude: config.ClaudeConfig{
 					APIKey: "test-key",
 				},
-				LLM: config.LLMConfig{
-					DefaultProvider: "ollama",
-				},
+				DefaultLLMProvider: "ollama",
 			},
 			expectOllamaClient: true,
 			expectClaudeClient: true,
@@ -109,9 +103,7 @@ func TestGetClient(t *testing.T) {
 		Claude: config.ClaudeConfig{
 			APIKey: "test-key",
 		},
-		LLM: config.LLMConfig{
-			DefaultProvider: "ollama",
-		},
+		DefaultLLMProvider: "ollama",
 	}
 
 	factory := NewFactory(cfg)
@@ -148,9 +140,7 @@ func TestGetDefaultClient(t *testing.T) {
 				Claude: config.ClaudeConfig{
 					APIKey: "test-key",
 				},
-				LLM: config.LLMConfig{
-					DefaultProvider: "ollama",
-				},
+				DefaultLLMProvider: "ollama",
 			},
 			wantClientType: Ollama,
 		},
@@ -163,9 +153,7 @@ func TestGetDefaultClient(t *testing.T) {
 				Claude: config.ClaudeConfig{
 					APIKey: "test-key",
 				},
-				LLM: config.LLMConfig{
-					DefaultProvider: "claude",
-				},
+				DefaultLLMProvider: "claude",
 			},
 			wantClientType: Claude,
 		},
@@ -178,9 +166,7 @@ func TestGetDefaultClient(t *testing.T) {
 				Claude: config.ClaudeConfig{
 					APIKey: "",
 				},
-				LLM: config.LLMConfig{
-					DefaultProvider: "unknown",
-				},
+				DefaultLLMProvider: "unknown",
 			},
 			wantClientType: Ollama,
 		},
@@ -193,9 +179,7 @@ func TestGetDefaultClient(t *testing.T) {
 				Claude: config.ClaudeConfig{
 					APIKey: "test-key",
 				},
-				LLM: config.LLMConfig{
-					DefaultProvider: "unknown",
-				},
+				DefaultLLMProvider: "unknown",
 			},
 			wantClientType: Claude,
 		},
@@ -208,9 +192,7 @@ func TestGetDefaultClient(t *testing.T) {
 				Claude: config.ClaudeConfig{
 					APIKey: "",
 				},
-				LLM: config.LLMConfig{
-					DefaultProvider: "unknown",
-				},
+				DefaultLLMProvider: "unknown",
 			},
 			wantErrContains: "no LLM clients initialized",
 		},
@@ -272,10 +254,12 @@ func TestClientInitialization(t *testing.T) {
 	// Test initialization with timeouts and retries
 	cfg := &config.Config{
 		Ollama: config.OllamaConfig{
-			Endpoint:     "http://localhost:11434",
-			Timeout:      5 * time.Second,
-			MaxRetries:   3,
-			DefaultModel: "llama2",
+			Endpoint:    "http://localhost:11434",
+			Timeout:     5 * time.Second,
+			MaxRetries:  3,
+			Model:       "deepseek-r1:latest",
+			MaxTokens:   1000,
+			Temperature: 0.7,
 		},
 		Claude: config.ClaudeConfig{
 			APIKey:     "test-key",
@@ -283,12 +267,7 @@ func TestClientInitialization(t *testing.T) {
 			Timeout:    10 * time.Second,
 			MaxRetries: 2,
 		},
-		LLM: config.LLMConfig{
-			DefaultProvider: "ollama",
-			DefaultModel:    "deepseek-r1:latest",
-			MaxTokens:       1000,
-			Temperature:     0.7,
-		},
+		DefaultLLMProvider: "ollama",
 	}
 
 	factory := NewFactory(cfg)
@@ -318,9 +297,7 @@ func TestStreamingRequests(t *testing.T) {
 		Ollama: config.OllamaConfig{
 			Endpoint: "http://localhost:11434",
 		},
-		LLM: config.LLMConfig{
-			DefaultProvider: "ollama",
-		},
+		DefaultLLMProvider: "ollama",
 	}
 
 	factory := NewFactory(cfg)
@@ -358,9 +335,7 @@ func TestEmbeddingRequests(t *testing.T) {
 		Ollama: config.OllamaConfig{
 			Endpoint: "http://invalid-endpoint", // Use invalid endpoint to force error
 		},
-		LLM: config.LLMConfig{
-			DefaultProvider: "ollama",
-		},
+		DefaultLLMProvider: "ollama",
 	}
 
 	factory := NewFactory(cfg)
@@ -455,9 +430,7 @@ func TestInvalidRequestErrors(t *testing.T) {
 		Claude: config.ClaudeConfig{
 			APIKey: "test-key",
 		},
-		LLM: config.LLMConfig{
-			DefaultProvider: "ollama",
-		},
+		DefaultLLMProvider: "ollama",
 	}
 
 	factory := NewFactory(cfg)
@@ -639,7 +612,7 @@ func TestConvertMessagesToOllama(t *testing.T) {
 }
 
 func TestConvertMessagesToClaude(t *testing.T) {
-	// Create test messages
+	// Create messages with different roles
 	messages := []Message{
 		{Role: "user", Content: "Hello"},
 		{Role: "assistant", Content: "Hi there"},

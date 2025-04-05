@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/tildaslashalef/mindnest/internal/config"
 	"github.com/tildaslashalef/mindnest/internal/llm"
@@ -37,15 +38,16 @@ func NewService(
 	}
 }
 
-// GenerateEmbedding generates an embedding for a single text
+// GenerateEmbedding generates an embedding for the given text
 func (s *Service) GenerateEmbedding(ctx context.Context, text string) ([]float32, error) {
+	// Generate a single embedding for the text
 	embeddings, err := s.GenerateBatchEmbeddings(ctx, []string{text})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("generating embedding: %w", err)
 	}
 
 	if len(embeddings) == 0 {
-		return nil, ErrEmbeddingGenerationFailed
+		return nil, fmt.Errorf("no embeddings generated")
 	}
 
 	return embeddings[0], nil
@@ -53,16 +55,17 @@ func (s *Service) GenerateEmbedding(ctx context.Context, text string) ([]float32
 
 // GenerateBatchEmbeddings generates embeddings for multiple texts
 func (s *Service) GenerateBatchEmbeddings(ctx context.Context, texts []string) ([][]float32, error) {
-	if len(texts) == 0 {
-		return [][]float32{}, nil
+	// If LLM client is not initialized, we can't generate embeddings
+	if s.llmClient == nil {
+		return nil, fmt.Errorf("LLM client not initialized, can't generate embeddings")
 	}
 
-	// Prepare embedding requests for each text
+	// Prepare embedding requests
 	reqs := make([]llm.EmbeddingRequest, len(texts))
 	for i, text := range texts {
 		reqs[i] = llm.EmbeddingRequest{
-			Model: s.config.Embedding.Model,
-			Text:  text,
+			// Embedding model is now handled by the LLM client based on the provider type
+			Text: text,
 		}
 	}
 
@@ -168,7 +171,7 @@ func (s *Service) ProcessChunks(ctx context.Context, chunks []*workspace.Chunk) 
 	}
 
 	// Process in batches to avoid hitting API rate limits
-	batchSize := s.config.Embedding.BatchSize
+	batchSize := s.config.RAG.BatchSize
 	if batchSize <= 0 {
 		batchSize = 20 // Default batch size
 	}
@@ -263,7 +266,7 @@ func (s *Service) GetSimilarChunks(ctx context.Context, fileID string, text stri
 // GetSimilarChunksByWorkspace retrieves chunks similar to the given text, filtered by workspace
 func (s *Service) GetSimilarChunksByWorkspace(ctx context.Context, fileID string, text string, workspaceID string, limit int) ([]*ScoredChunk, error) {
 	if limit <= 0 {
-		limit = s.config.Embedding.NSimilarChunks
+		limit = s.config.RAG.NSimilarChunks
 	}
 
 	// Generate an embedding for the text
@@ -324,7 +327,7 @@ func (s *Service) findChunksByVectorID(ctx context.Context, vectorID int64) ([]*
 // GetRelatedChunks retrieves chunks related to the given chunk
 func (s *Service) GetRelatedChunks(ctx context.Context, chunkID string, limit int) ([]*ScoredChunk, error) {
 	if limit <= 0 {
-		limit = s.config.Embedding.NSimilarChunks
+		limit = s.config.RAG.NSimilarChunks
 	}
 
 	// Get the chunk
@@ -392,11 +395,13 @@ func (s *Service) GetRelatedChunks(ctx context.Context, chunkID string, limit in
 // BuildContextWindow builds a context window for a given text
 func (s *Service) BuildContextWindow(ctx context.Context, fileID string, text string, maxTokens int) (*ContextWindow, error) {
 	if maxTokens <= 0 {
-		maxTokens = s.config.LLM.MaxTokens / 2 // Use half of the max tokens for context
+		// Use a default value since LLM.MaxTokens is no longer available
+		// Alternatively, we could get this from the default provider's config
+		maxTokens = 2048 // Default to 2048 tokens for context
 	}
 
 	// Get similar chunks
-	limit := s.config.Embedding.NSimilarChunks * 2 // Get more than we need to prioritize
+	limit := s.config.RAG.NSimilarChunks * 2 // Get more than we need to prioritize
 	scoredChunks, err := s.GetSimilarChunks(ctx, fileID, text, limit)
 	if err != nil {
 		return nil, fmt.Errorf("getting similar chunks: %w", err)
@@ -511,7 +516,7 @@ func (s *Service) GetSimilarChunksByType(
 // FindSimilarChunks finds chunks similar to the given text
 func (s *Service) FindSimilarChunks(ctx context.Context, text string, workspaceID string, chunkType string, limit int) ([]*ScoredChunk, error) {
 	if limit <= 0 {
-		limit = s.config.Embedding.NSimilarChunks
+		limit = s.config.RAG.NSimilarChunks
 	}
 
 	// Generate an embedding for the text
@@ -559,7 +564,7 @@ func (s *Service) FindSimilarChunksExcludingFile(
 	limit int,
 ) ([]*ScoredChunk, error) {
 	if limit <= 0 {
-		limit = s.config.Embedding.NSimilarChunks
+		limit = s.config.RAG.NSimilarChunks
 	}
 
 	// Generate an embedding for the text
@@ -623,4 +628,114 @@ func (s *Service) GetChunkWithVector(ctx context.Context, chunkID string) (*work
 // GetVectorRepo returns the vector repository
 func (s *Service) GetVectorRepo() Repository {
 	return s.vectorRepo
+}
+
+// processDiffChunks processes and indexes chunks from a diff
+func (s *Service) processDiffChunks(ctx context.Context, pendingChunks []*workspace.Chunk) error {
+	if len(pendingChunks) == 0 {
+		return nil
+	}
+
+	// Set batch size
+	batchSize := s.config.RAG.BatchSize
+	if batchSize <= 0 {
+		batchSize = 20 // Default batch size
+	}
+
+	// Process in batches to avoid overloading the LLM API
+	texts := make([]string, 0, len(pendingChunks))
+	for _, chunk := range pendingChunks {
+		texts = append(texts, chunk.Content)
+	}
+
+	// Process chunks in batches
+	for i := 0; i < len(pendingChunks); i += batchSize {
+		end := i + batchSize
+		if end > len(pendingChunks) {
+			end = len(pendingChunks)
+		}
+
+		// Get the current batch
+		batchTexts := texts[i:end]
+		batchChunks := pendingChunks[i:end]
+
+		// Generate embeddings for all texts in the batch
+		embeddings, err := s.GenerateBatchEmbeddings(ctx, batchTexts)
+		if err != nil {
+			return fmt.Errorf("generating batch embeddings: %w", err)
+		}
+
+		// Store embeddings and update chunks
+		for j, chunk := range batchChunks {
+			vectorID, err := s.vectorRepo.StoreVector(ctx, embeddings[j])
+			if err != nil {
+				return fmt.Errorf("storing vector: %w", err)
+			}
+			chunk.SetVectorID(vectorID)
+		}
+
+		// Allow a short pause between batches to avoid rate limiting
+		if end < len(pendingChunks) {
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+
+	return nil
+}
+
+// FindContext finds context chunks for a given file path
+func (s *Service) FindContext(ctx context.Context, workspaceID string, filePath string, limit int) ([]*workspace.Chunk, error) {
+	if limit <= 0 {
+		limit = s.config.RAG.NSimilarChunks
+	}
+
+	// This is just a stub - you would implement the actual functionality here
+	return nil, nil
+}
+
+// FindFileContext finds context chunks for a new file
+func (s *Service) FindFileContext(ctx context.Context, workspaceID string, filePath string, limit int) ([]*workspace.Chunk, error) {
+	if limit <= 0 {
+		limit = s.config.RAG.NSimilarChunks
+	}
+
+	// This is just a stub - you would implement the actual functionality here
+	return nil, nil
+}
+
+// RelatedLine represents a line of code and its relevance score
+type RelatedLine struct {
+	LineNumber int
+	Content    string
+	Similarity float64
+}
+
+// FindRelatedLines finds lines related to a given line in the file
+func (s *Service) FindRelatedLines(ctx context.Context, workspaceID string, filePath string, lineNumber int, limit int) ([]RelatedLine, error) {
+	if limit <= 0 {
+		limit = s.config.RAG.NSimilarChunks * 2 // Get more than we need to prioritize
+	}
+
+	// This is just a stub - you would implement the actual functionality here
+	return nil, nil
+}
+
+// FindSimilarChanges finds changes similar to a given change
+func (s *Service) FindSimilarChanges(ctx context.Context, workspaceID string, chunk *workspace.Chunk, limit int) ([]*workspace.Chunk, error) {
+	if limit <= 0 {
+		limit = s.config.RAG.NSimilarChunks
+	}
+
+	// This is just a stub - you would implement the actual functionality here
+	return nil, nil
+}
+
+// FindFunctionContext finds context chunks for a function
+func (s *Service) FindFunctionContext(ctx context.Context, workspaceID string, functionName string, limit int) ([]*workspace.Chunk, error) {
+	if limit <= 0 {
+		limit = s.config.RAG.NSimilarChunks
+	}
+
+	// This is just a stub - you would implement the actual functionality here
+	return nil, nil
 }

@@ -68,29 +68,37 @@ func LoadFromEnv(configDir string, configFilePath string, isInitializing bool) (
 	}
 
 	// LLM Configuration
-	cfg.LLM = LLMConfig{
-		DefaultProvider: getEnvString("MINDNEST_LLM_DEFAULT_PROVIDER", "claude"),
-		DefaultModel:    getEnvString("MINDNEST_LLM_DEFAULT_MODEL", "claude-3-7-sonnet-20250219"),
-		MaxTokens:       getEnvInt("MINDNEST_LLM_MAX_TOKENS", 4096),
-		Temperature:     getEnvFloat("MINDNEST_LLM_TEMPERATURE", 0.1),
-	}
+	cfg.DefaultLLMProvider = getEnvString("MINDNEST_LLM_DEFAULT_PROVIDER", "claude")
 
-	// Ollama Configuration
+	// Load Ollama Configuration
 	cfg.Ollama = OllamaConfig{
 		Endpoint:            getEnvString("MINDNEST_OLLAMA_ENDPOINT", "http://localhost:11434"),
-		Timeout:             getEnvDuration("MINDNEST_OLLAMA_TIMEOUT", 5*time.Minute),
+		Timeout:             getEnvDuration("MINDNEST_OLLAMA_TIMEOUT", 120*time.Second),
 		MaxRetries:          getEnvInt("MINDNEST_OLLAMA_MAX_RETRIES", 3),
-		DefaultModel:        getEnvString("MINDNEST_OLLAMA_DEFAULT_MODEL", "gemma3"),
+		Model:               getEnvString("MINDNEST_OLLAMA_MODEL", "gemma3"),
+		EmbeddingModel:      getEnvString("MINDNEST_OLLAMA_EMBEDDING_MODEL", "nomic-embed-text"),
+		MaxTokens:           getEnvInt("MINDNEST_OLLAMA_MAX_TOKENS", 2048),
+		Temperature:         getEnvFloat("MINDNEST_OLLAMA_TEMPERATURE", 0.7),
 		MaxIdleConns:        getEnvInt("MINDNEST_OLLAMA_MAX_IDLE_CONNS", 100),
 		MaxIdleConnsPerHost: getEnvInt("MINDNEST_OLLAMA_MAX_IDLE_CONNS_PER_HOST", 100),
 		IdleConnTimeout:     getEnvDuration("MINDNEST_OLLAMA_IDLE_CONN_TIMEOUT", 90*time.Second),
 	}
 
 	// Load Claude config
+	rawApiBeta := strings.Split(getEnvString("MINDNEST_CLAUDE_API_BETA", ""), ",")
+	var apiBeta []string
+	for _, beta := range rawApiBeta {
+		beta = strings.TrimSpace(beta)
+		if beta != "" && !strings.HasPrefix(beta, "#") {
+			apiBeta = append(apiBeta, beta)
+		}
+	}
+
 	cfg.Claude = ClaudeConfig{
 		APIKey:           getEnvString("MINDNEST_CLAUDE_API_KEY", ""),
 		BaseURL:          getEnvString("MINDNEST_CLAUDE_BASE_URL", "https://api.anthropic.com"),
 		Model:            getEnvString("MINDNEST_CLAUDE_MODEL", "claude-3-7-sonnet-20250219"),
+		EmbeddingModel:   getEnvString("MINDNEST_CLAUDE_EMBEDDING_MODEL", "nomic-embed-text"),
 		Timeout:          getEnvDuration("MINDNEST_CLAUDE_TIMEOUT", 60*time.Second),
 		MaxRetries:       getEnvInt("MINDNEST_CLAUDE_MAX_RETRIES", 3),
 		MaxTokens:        getEnvInt("MINDNEST_CLAUDE_MAX_TOKENS", 4096),
@@ -98,24 +106,34 @@ func LoadFromEnv(configDir string, configFilePath string, isInitializing bool) (
 		TopP:             getEnvFloat("MINDNEST_CLAUDE_TOP_P", 0.9),
 		TopK:             getEnvInt("MINDNEST_CLAUDE_TOP_K", 40),
 		APIVersion:       getEnvString("MINDNEST_CLAUDE_API_VERSION", "2023-06-01"),
-		APIBeta:          strings.Split(getEnvString("MINDNEST_CLAUDE_API_BETA", ""), ","),
+		UseAPIBeta:       getEnvBool("MINDNEST_CLAUDE_USE_API_BETA", false),
+		APIBeta:          apiBeta,
 		UseStopSequences: getEnvBool("MINDNEST_CLAUDE_USE_STOP_SEQUENCES", false),
 		StopSequences:    strings.Split(getEnvString("MINDNEST_CLAUDE_STOP_SEQUENCES", ""), ","),
 	}
 
-	// Embedding Configuration
-	cfg.Embedding = EmbeddingConfig{
-		Model:          getEnvString("MINDNEST_EMBEDDING_MODEL", "nomic-embed-text"),
-		NSimilarChunks: getEnvInt("MINDNEST_EMBEDDING_N_SIMILAR_CHUNKS", 5),
-		Timeout:        getEnvDuration("MINDNEST_EMBEDDING_TIMEOUT", 30*time.Second),
-		ExecPath:       getEnvString("MINDNEST_EMBEDDING_EXEC_PATH", ""),
-		BatchSize:      getEnvInt("MINDNEST_EMBEDDING_BATCH_SIZE", 20),
+	// Load Gemini configuration
+	cfg.Gemini = GeminiConfig{
+		APIKey:           getEnvString("MINDNEST_GEMINI_API_KEY", ""),
+		BaseURL:          getEnvString("MINDNEST_GEMINI_BASE_URL", "https://generativelanguage.googleapis.com"),
+		APIVersion:       getEnvString("MINDNEST_GEMINI_API_VERSION", "v1beta"),
+		EmbeddingVersion: getEnvString("MINDNEST_GEMINI_EMBEDDING_VERSION", "v1beta"),
+		Model:            getEnvString("MINDNEST_GEMINI_MODEL", "gemini-2.5-pro-exp-03-25"),
+		EmbeddingModel:   getEnvString("MINDNEST_GEMINI_EMBEDDING_MODEL", "gemini-embedding-exp-03-07"),
+		Timeout:          getEnvDuration("MINDNEST_GEMINI_TIMEOUT", 60*time.Second),
+		MaxRetries:       getEnvInt("MINDNEST_GEMINI_MAX_RETRIES", 3),
+		MaxTokens:        getEnvInt("MINDNEST_GEMINI_MAX_TOKENS", 4096),
+		Temperature:      getEnvFloat("MINDNEST_GEMINI_TEMPERATURE", 0.1),
+		TopP:             getEnvFloat("MINDNEST_GEMINI_TOP_P", 0.9),
+		TopK:             getEnvInt("MINDNEST_GEMINI_TOP_K", 40),
 	}
 
-	// Context Configuration
-	cfg.Context = ContextConfig{
+	// RAG Configuration (formerly Embedding config)
+	cfg.RAG = RAGConfig{
+		NSimilarChunks:  getEnvInt("MINDNEST_RAG_N_SIMILAR_CHUNKS", 10),
+		BatchSize:       getEnvInt("MINDNEST_RAG_BATCH_SIZE", 20),
 		MaxFilesSameDir: getEnvInt("MINDNEST_CONTEXT_MAX_FILES_SAME_DIR", 10),
-		ContextDepth:    getEnvInt("MINDNEST_CONTEXT_DEPTH", 3),
+		ContextDepth:    getEnvInt("MINDNEST_CONTEXT_CONTEXT_DEPTH", 2),
 	}
 
 	// GitHub Configuration

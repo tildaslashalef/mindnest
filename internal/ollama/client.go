@@ -71,7 +71,7 @@ func (c *Client) GetVersion(ctx context.Context) (string, error) {
 func (c *Client) GenerateChat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
 	// Use default model if none specified
 	if req.Model == "" {
-		req.Model = c.config.DefaultModel
+		req.Model = c.config.Model
 	}
 
 	// Explicitly set streaming to false for non-streaming requests
@@ -94,7 +94,7 @@ func (c *Client) GenerateChat(ctx context.Context, req ChatRequest) (*ChatRespon
 func (c *Client) GenerateChatStream(ctx context.Context, req ChatRequest) (<-chan ChatResponse, error) {
 	// Use default model if none specified
 	if req.Model == "" {
-		req.Model = c.config.DefaultModel
+		req.Model = c.config.Model
 	}
 
 	// Force streaming to true
@@ -182,7 +182,7 @@ func (c *Client) GenerateChatStream(ctx context.Context, req ChatRequest) (<-cha
 func (c *Client) GenerateCompletion(ctx context.Context, req GenerateRequest) (*GenerateResponse, error) {
 	// Use default model if none specified
 	if req.Model == "" {
-		req.Model = c.config.DefaultModel
+		req.Model = c.config.Model
 	}
 
 	// Explicitly set streaming to false
@@ -205,7 +205,7 @@ func (c *Client) GenerateCompletion(ctx context.Context, req GenerateRequest) (*
 func (c *Client) GenerateCompletionStream(ctx context.Context, req GenerateRequest) (<-chan GenerateResponse, error) {
 	// Use default model if none specified
 	if req.Model == "" {
-		req.Model = c.config.DefaultModel
+		req.Model = c.config.Model
 	}
 
 	// Force streaming to true
@@ -291,10 +291,8 @@ func (c *Client) GenerateCompletionStream(ctx context.Context, req GenerateReque
 
 // GenerateEmbedding generates embeddings for text(s)
 func (c *Client) GenerateEmbedding(ctx context.Context, req EmbeddingRequest) (*EmbeddingResponse, error) {
-	// Use default model if none specified
-	if req.Model == "" {
-		req.Model = c.config.DefaultModel
-	}
+	// Always use the embedding model for embedding operations
+	req.Model = c.config.EmbeddingModel
 
 	var resp EmbeddingResponse
 	if err := c.makeRequest(ctx, http.MethodPost, "/api/embed", req, &resp); err != nil {
@@ -311,10 +309,8 @@ func (c *Client) GenerateEmbedding(ctx context.Context, req EmbeddingRequest) (*
 
 // GenerateSingleEmbedding uses the legacy /api/embeddings endpoint for compatibility
 func (c *Client) GenerateSingleEmbedding(ctx context.Context, req SingleEmbeddingRequest) (*SingleEmbeddingResponse, error) {
-	// Use default model if none specified
-	if req.Model == "" {
-		req.Model = c.config.DefaultModel
-	}
+	// Always use the embedding model for embedding operations
+	req.Model = c.config.EmbeddingModel
 
 	var resp SingleEmbeddingResponse
 	if err := c.makeRequest(ctx, http.MethodPost, "/api/embeddings", req, &resp); err != nil {

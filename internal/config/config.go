@@ -40,125 +40,156 @@ func Set(cfg *Config) {
 
 // Config represents the complete application configuration
 type Config struct {
-	LLM       LLMConfig       `yaml:"llm"`
-	Ollama    OllamaConfig    `yaml:"ollama"`
-	Claude    ClaudeConfig    `yaml:"claude"`
-	Embedding EmbeddingConfig `yaml:"embedding"`
-	Context   ContextConfig   `yaml:"context"`
-	GitHub    GitHubConfig    `yaml:"github"`
-	Workspace WorkspaceConfig `yaml:"workspace"`
-	Database  DatabaseConfig  `yaml:"database"`
-	Logging   LoggingConfig   `yaml:"logging"`
-	Server    ServerConfig    `yaml:"server"`
+	DefaultLLMProvider string // Which provider to use by default (ollama, claude, or gemini)
+	Ollama             OllamaConfig
+	Claude             ClaudeConfig
+	Gemini             GeminiConfig
+	RAG                RAGConfig // Retrieval-augmented generation configuration
+	GitHub             GitHubConfig
+	Workspace          WorkspaceConfig
+	Database           DatabaseConfig
+	Logging            LoggingConfig
+	Server             ServerConfig
 }
 
-// EmbeddingConfig represents embedding-specific configuration
-type EmbeddingConfig struct {
-	Model          string        `yaml:"model"`
-	NSimilarChunks int           `yaml:"n_similar_chunks"`
-	Timeout        time.Duration `yaml:"timeout"`
-	ExecPath       string        `yaml:"exec_path"`
-	BatchSize      int           `yaml:"batch_size"`
-}
-
-// ContextConfig represents context retrieval configuration
-type ContextConfig struct {
-	MaxFilesSameDir int `yaml:"max_files_same_directory"`
-	ContextDepth    int `yaml:"context_depth"`
+// RAGConfig represents retrieval-augmented generation configuration
+type RAGConfig struct {
+	NSimilarChunks  int // Number of similar chunks to retrieve
+	BatchSize       int // Number of chunks to process in each batch
+	MaxFilesSameDir int // Maximum number of files to include from the same directory for context
+	ContextDepth    int // How deep to search in the directory hierarchy for context
 }
 
 // GitHubConfig represents GitHub-specific configuration
 type GitHubConfig struct {
-	Token          string        `yaml:"token" json:"token"`                     // GitHub Personal Access Token
-	APIURL         string        `yaml:"api_url" json:"api_url"`                 // GitHub API base URL
-	RequestTimeout time.Duration `yaml:"request_timeout" json:"request_timeout"` // Request timeout for GitHub API
-	Concurrency    int           `yaml:"concurrency" json:"concurrency"`         // Number of concurrent API requests
+	Token          string        // GitHub Personal Access Token
+	APIURL         string        // GitHub API base URL
+	RequestTimeout time.Duration // Request timeout for GitHub API
+	Concurrency    int           // Number of concurrent API requests
 }
 
 // WorkspaceConfig represents workspace handling configuration
 type WorkspaceConfig struct {
-	AutoCreate bool `yaml:"auto_create"`
+	AutoCreate bool // Whether to automatically create workspaces
 }
 
 // DatabaseConfig represents database configuration
 type DatabaseConfig struct {
-	Path            string        `yaml:"path"`
-	BusyTimeout     int           `yaml:"busy_timeout"`
-	JournalMode     string        `yaml:"journal_mode"`
-	SynchronousMode string        `yaml:"synchronous_mode"`
-	CacheSize       int           `yaml:"cache_size"`
-	ForeignKeys     bool          `yaml:"foreign_keys"`
-	ConnMaxLife     time.Duration `yaml:"conn_max_life"`
-	QueryTimeout    time.Duration `yaml:"query_timeout"`
+	Path            string        // Path to the SQLite database file
+	JournalMode     string        // Journal mode (WAL recommended)
+	SynchronousMode string        // Synchronous mode
+	BusyTimeout     int           // Busy timeout in milliseconds
+	CacheSize       int           // Cache size in KiB
+	ForeignKeys     bool          // Whether to enforce foreign key constraints
+	ConnMaxLife     time.Duration // Maximum connection lifetime
+	QueryTimeout    time.Duration // Query timeout
 }
 
 // LoggingConfig represents logging configuration
 type LoggingConfig struct {
-	Level      string `yaml:"level"`       // debug, info, warn, error
-	Format     string `yaml:"format"`      // text or json
-	Output     string `yaml:"output"`      // stdout, stderr, or file path
-	AddSource  bool   `yaml:"add_source"`  // Include source code position in logs
-	TimeFormat string `yaml:"time_format"` // Time format for logs (empty uses RFC3339)
+	Level      string // debug, info, warn, error
+	Format     string // text or json
+	Output     string // stdout, stderr, or file path
+	AddSource  bool   // Include source code position in logs
+	TimeFormat string // Time format for logs (empty uses RFC3339)
 }
 
 // OllamaConfig holds configuration specific to the Ollama client
 type OllamaConfig struct {
-	Endpoint            string        `yaml:"endpoint" json:"endpoint"`                               // Ollama API endpoint URL
-	Timeout             time.Duration `yaml:"timeout" json:"timeout"`                                 // Request timeout
-	MaxRetries          int           `yaml:"max_retries" json:"max_retries"`                         // Maximum number of retries on failure
-	DefaultModel        string        `yaml:"default_model" json:"default_model"`                     // Default model to use if none specified
-	MaxIdleConns        int           `yaml:"max_idle_conns" json:"max_idle_conns"`                   // Maximum number of idle connections
-	MaxIdleConnsPerHost int           `yaml:"max_idle_conns_per_host" json:"max_idle_conns_per_host"` // Maximum number of idle connections per host
-	IdleConnTimeout     time.Duration `yaml:"idle_conn_timeout" json:"idle_conn_timeout"`             // How long to keep idle connections alive
+	// Connection settings
+	Endpoint            string        // Ollama API endpoint URL
+	MaxIdleConns        int           // Maximum number of idle connections
+	MaxIdleConnsPerHost int           // Maximum number of idle connections per host
+	IdleConnTimeout     time.Duration // How long to keep idle connections alive
+
+	// Model settings
+	Model          string // Default model to use
+	EmbeddingModel string // Default embedding model to use
+
+	// Request settings
+	Timeout    time.Duration // Request timeout
+	MaxRetries int           // Maximum number of retries on failure
+
+	// Generation parameters
+	MaxTokens   int     // Max tokens to generate for responses
+	Temperature float64 // Default temperature for generation
 }
 
 // ClaudeConfig holds Claude API configuration
 type ClaudeConfig struct {
-	APIKey           string        `yaml:"api_key" json:"api_key"`                       // Claude API key
-	BaseURL          string        `yaml:"base_url" json:"base_url"`                     // Claude API base URL
-	Model            string        `yaml:"model" json:"model"`                           // Claude model to use
-	Timeout          time.Duration `yaml:"timeout" json:"timeout"`                       // Request timeout
-	MaxRetries       int           `yaml:"max_retries" json:"max_retries"`               // Maximum number of retries on failure
-	MaxTokens        int           `yaml:"max_tokens" json:"max_tokens"`                 // Max tokens to generate for Claude responses
-	Temperature      float64       `yaml:"temperature" json:"temperature"`               // Default temperature for Claude
-	TopP             float64       `yaml:"top_p" json:"top_p"`                           // Top-p sampling parameter
-	TopK             int           `yaml:"top_k" json:"top_k"`                           // Top-k sampling parameter
-	APIVersion       string        `yaml:"api_version" json:"api_version"`               // API version to use
-	APIBeta          []string      `yaml:"api_beta" json:"api_beta"`                     // Beta features to enable
-	UseStopSequences bool          `yaml:"use_stop_sequences" json:"use_stop_sequences"` // Whether to use stop sequences
-	StopSequences    []string      `yaml:"stop_sequences" json:"stop_sequences"`         // Custom stop sequences
+	// Authentication and connection
+	APIKey     string   // Claude API key
+	BaseURL    string   // Claude API base URL
+	APIVersion string   // API version to use
+	UseAPIBeta bool     // Whether to use API beta features
+	APIBeta    []string // Beta features to enable
+
+	// Model settings
+	Model          string // Claude model to use
+	EmbeddingModel string // Claude embedding model to use (when Claude adds embedding support)
+
+	// Request settings
+	Timeout    time.Duration // Request timeout
+	MaxRetries int           // Maximum number of retries on failure
+
+	// Generation parameters
+	MaxTokens   int     // Max tokens to generate for Claude responses
+	Temperature float64 // Default temperature for Claude
+	TopP        float64 // Top-p sampling parameter
+	TopK        int     // Top-k sampling parameter
+
+	// Stop sequence settings
+	UseStopSequences bool     // Whether to use stop sequences
+	StopSequences    []string // Custom stop sequences
 }
 
-// LLMConfig holds general LLM configuration that applies across providers
-type LLMConfig struct {
-	DefaultProvider string  `yaml:"default_provider" json:"default_provider"` // Which provider to use by default (ollama or claude)
-	DefaultModel    string  `yaml:"default_model" json:"default_model"`       // Generic default model name (will be overridden by provider-specific defaults)
-	MaxTokens       int     `yaml:"max_tokens" json:"max_tokens"`             // Default max tokens for generation
-	Temperature     float64 `yaml:"temperature" json:"temperature"`           // Default temperature for generation
+// GeminiConfig holds Gemini API configuration
+type GeminiConfig struct {
+	// Authentication and connection
+	APIKey  string // Gemini API key
+	BaseURL string // Gemini API base URL
+
+	// API version settings
+	APIVersion       string // API version for chat models (v1 or v1beta)
+	EmbeddingVersion string // API version for embedding models (v1 or v1beta)
+
+	// Model settings
+	Model          string // Gemini model to use
+	EmbeddingModel string // Gemini embedding model to use
+
+	// Request settings
+	Timeout    time.Duration // Request timeout
+	MaxRetries int           // Maximum number of retries on failure
+
+	// Generation parameters
+	MaxTokens   int     // Max tokens to generate for Gemini responses
+	Temperature float64 // Default temperature for Gemini
+	TopP        float64 // Top-p sampling parameter
+	TopK        int     // Top-k sampling parameter
 }
 
 // ServerConfig holds configuration for the sync server
 type ServerConfig struct {
-	Enabled    bool          `yaml:"enabled"`
-	URL        string        `yaml:"url"`
-	Token      string        `yaml:"token"`
-	Timeout    time.Duration `yaml:"timeout"`
-	DeviceName string        `yaml:"device_name"`
+	Enabled    bool          // Whether the server is enabled
+	URL        string        // Server URL
+	Token      string        // Authentication token
+	Timeout    time.Duration // Request timeout
+	DeviceName string        // Device name for identification
 }
 
 // New returns a new empty Config
 func New() *Config {
 	return &Config{
-		LLM:       LLMConfig{},
-		Ollama:    OllamaConfig{},
-		Claude:    ClaudeConfig{},
-		Embedding: EmbeddingConfig{},
-		Context:   ContextConfig{},
-		GitHub:    GitHubConfig{},
-		Workspace: WorkspaceConfig{},
-		Database:  DatabaseConfig{},
-		Logging:   LoggingConfig{},
-		Server:    ServerConfig{},
+		DefaultLLMProvider: "",
+		Ollama:             OllamaConfig{},
+		Claude:             ClaudeConfig{},
+		Gemini:             GeminiConfig{},
+		RAG:                RAGConfig{}, // Now includes context fields
+		GitHub:             GitHubConfig{},
+		Workspace:          WorkspaceConfig{},
+		Database:           DatabaseConfig{},
+		Logging:            LoggingConfig{},
+		Server:             ServerConfig{},
 	}
 }
 
@@ -172,12 +203,12 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("Ollama config: %w", err)
 	}
 
-	if err := c.validateEmbedding(); err != nil {
-		return fmt.Errorf("embedding config: %w", err)
+	if err := c.validateGemini(); err != nil {
+		return fmt.Errorf("Gemini config: %w", err)
 	}
 
-	if err := c.validateContext(); err != nil {
-		return fmt.Errorf("context config: %w", err)
+	if err := c.validateRAG(); err != nil {
+		return fmt.Errorf("RAG config: %w", err)
 	}
 
 	if err := c.validateDatabase(); err != nil {
@@ -211,14 +242,9 @@ func ParseLogLevel(level string) slog.Level {
 }
 
 func (c *Config) validateLLM() error {
-	if c.LLM.DefaultProvider == "" {
+	if c.DefaultLLMProvider == "" {
 		return fmt.Errorf("default provider cannot be empty")
 	}
-
-	if c.LLM.DefaultModel == "" {
-		return fmt.Errorf("default model cannot be empty")
-	}
-
 	return nil
 }
 
@@ -235,8 +261,16 @@ func (c *Config) validateOllama() error {
 		return fmt.Errorf("max_retries must be positive")
 	}
 
-	if c.Ollama.DefaultModel == "" {
-		return fmt.Errorf("default_model cannot be empty")
+	if c.Ollama.Model == "" {
+		return fmt.Errorf("model cannot be empty")
+	}
+
+	if c.Ollama.MaxTokens <= 0 {
+		return fmt.Errorf("max_tokens must be positive")
+	}
+
+	if c.Ollama.Temperature <= 0 {
+		return fmt.Errorf("temperature must be positive")
 	}
 
 	if c.Ollama.MaxIdleConns <= 0 {
@@ -254,24 +288,77 @@ func (c *Config) validateOllama() error {
 	return nil
 }
 
-func (c *Config) validateEmbedding() error {
-	if c.Embedding.Model == "" {
-		return fmt.Errorf("model cannot be empty")
+func (c *Config) validateGemini() error {
+	// If API key is not provided, return early
+	if c.Gemini.APIKey == "" {
+		return nil
 	}
 
-	if c.Embedding.NSimilarChunks <= 0 {
-		return fmt.Errorf("number of similar chunks must be positive")
+	// Set base URL default if not provided
+	if c.Gemini.BaseURL == "" {
+		c.Gemini.BaseURL = "https://generativelanguage.googleapis.com"
+	}
+
+	// Set API version defaults if not provided
+	if c.Gemini.APIVersion == "" {
+		c.Gemini.APIVersion = "v1beta"
+	}
+
+	if c.Gemini.EmbeddingVersion == "" {
+		c.Gemini.EmbeddingVersion = "v1beta"
+	}
+
+	// Validate API versions are v1 or v1beta
+	if c.Gemini.APIVersion != "v1" && c.Gemini.APIVersion != "v1beta" {
+		return fmt.Errorf("invalid API version: %s (must be v1 or v1beta)", c.Gemini.APIVersion)
+	}
+
+	if c.Gemini.EmbeddingVersion != "v1" && c.Gemini.EmbeddingVersion != "v1beta" {
+		return fmt.Errorf("invalid embedding API version: %s (must be v1 or v1beta)", c.Gemini.EmbeddingVersion)
+	}
+
+	// Set default model if not provided
+	if c.Gemini.Model == "" {
+		c.Gemini.Model = "gemini-2.5-pro"
+	}
+
+	// Set default embedding model if not provided
+	if c.Gemini.EmbeddingModel == "" {
+		c.Gemini.EmbeddingModel = "gemini-embedding-exp-03-07"
+	}
+
+	// Set default timeout if not provided
+	if c.Gemini.Timeout == 0 {
+		c.Gemini.Timeout = 30 * time.Second
+	}
+
+	// Set default max retries if not provided
+	if c.Gemini.MaxRetries <= 0 {
+		c.Gemini.MaxRetries = 3
+	}
+
+	// Set default max tokens if not provided
+	if c.Gemini.MaxTokens <= 0 {
+		c.Gemini.MaxTokens = 8192
 	}
 
 	return nil
 }
 
-func (c *Config) validateContext() error {
-	if c.Context.MaxFilesSameDir <= 0 {
+func (c *Config) validateRAG() error {
+	if c.RAG.NSimilarChunks <= 0 {
+		return fmt.Errorf("number of similar chunks must be positive")
+	}
+
+	if c.RAG.BatchSize <= 0 {
+		return fmt.Errorf("batch size must be positive")
+	}
+
+	if c.RAG.MaxFilesSameDir <= 0 {
 		return fmt.Errorf("max files in same directory must be positive")
 	}
 
-	if c.Context.ContextDepth <= 0 {
+	if c.RAG.ContextDepth <= 0 {
 		return fmt.Errorf("context depth must be positive")
 	}
 

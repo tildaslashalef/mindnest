@@ -157,12 +157,32 @@ func (s *Service) ReviewFile(ctx context.Context, reviewID string, file *workspa
 
 	// Call the LLM
 	chatReq := llm.ChatRequest{
-		Model:       s.config.LLM.DefaultModel,
-		Messages:    llmMessages,
-		Temperature: s.config.LLM.Temperature,
-		MaxTokens:   s.config.LLM.MaxTokens,
-		Stream:      false,
+		Stream: false,
 	}
+
+	// Set model and parameters based on the provider
+	switch s.config.DefaultLLMProvider {
+	case "ollama":
+		chatReq.Model = s.config.Ollama.Model
+		chatReq.Temperature = s.config.Ollama.Temperature
+		chatReq.MaxTokens = s.config.Ollama.MaxTokens
+	case "claude":
+		chatReq.Model = s.config.Claude.Model
+		chatReq.Temperature = s.config.Claude.Temperature
+		chatReq.MaxTokens = s.config.Claude.MaxTokens
+	case "gemini":
+		chatReq.Model = s.config.Gemini.Model
+		chatReq.Temperature = s.config.Gemini.Temperature
+		chatReq.MaxTokens = s.config.Gemini.MaxTokens
+	default:
+		// Set reasonable defaults
+		chatReq.Model = "claude-3-7-sonnet-20250219" // Default model as a fallback
+		chatReq.Temperature = 0.1
+		chatReq.MaxTokens = 4096
+	}
+
+	// Set the messages
+	chatReq.Messages = llmMessages
 
 	// Make the request to the LLM
 	response, err := s.llmClient.GenerateChat(ctx, chatReq)
@@ -176,7 +196,7 @@ func (s *Service) ReviewFile(ctx context.Context, reviewID string, file *workspa
 	}
 
 	s.logger.Debug("LLM raw response",
-		"model", s.config.LLM.DefaultModel,
+		"model", chatReq.Model,
 		"content_length", len(response.Content),
 		"content", response.Content)
 
@@ -186,7 +206,7 @@ func (s *Service) ReviewFile(ctx context.Context, reviewID string, file *workspa
 	if err != nil {
 		s.logger.Warn("Failed to extract LLM response as valid JSON",
 			"error", err,
-			"model", s.config.LLM.DefaultModel,
+			"model", chatReq.Model,
 			"response_length", len(response.Content))
 	}
 
@@ -274,6 +294,21 @@ func (s *Service) CompleteReview(ctx context.Context, reviewID string) (*Review,
 	}
 
 	// Create a result summary
+	modelUsed := ""
+	if len(reviewFiles) > 0 {
+		// Use the model that was used in the review
+		switch s.config.DefaultLLMProvider {
+		case "ollama":
+			modelUsed = s.config.Ollama.Model
+		case "claude":
+			modelUsed = s.config.Claude.Model
+		case "gemini":
+			modelUsed = s.config.Gemini.Model
+		default:
+			modelUsed = "claude-3-7-sonnet-20250219" // Default as fallback
+		}
+	}
+
 	result := ReviewResult{
 		Summary:         "Code review completed",
 		TotalIssues:     0,
@@ -282,7 +317,7 @@ func (s *Service) CompleteReview(ctx context.Context, reviewID string) (*Review,
 		ExecutionTime:   float64(time.Since(review.CreatedAt).Milliseconds()) / 1000.0,
 		ProcessedFiles:  len(reviewFiles),
 		ProcessedChunks: 0,
-		Model:           s.config.LLM.DefaultModel,
+		Model:           modelUsed,
 	}
 
 	// Process all review files

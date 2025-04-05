@@ -250,10 +250,7 @@ func TestNew(t *testing.T) {
 	assert.Empty(t, cfg.Database.Path, "Database path should be empty")
 
 	// All other fields should be at zero values
-	assert.Empty(t, cfg.LLM.DefaultProvider)
-	assert.Empty(t, cfg.LLM.DefaultModel)
-	assert.Zero(t, cfg.LLM.MaxTokens)
-	assert.Zero(t, cfg.LLM.Temperature)
+	assert.Empty(t, cfg.DefaultLLMProvider)
 	assert.Empty(t, cfg.Ollama.Endpoint)
 	assert.Zero(t, cfg.Ollama.Timeout)
 	assert.Empty(t, cfg.Logging.Level)
@@ -263,8 +260,8 @@ func TestNew(t *testing.T) {
 func TestLoadFromEnv(t *testing.T) {
 	// Reset any environment variables that might affect the test
 	vars := []string{
-		"LLM_DEFAULT_PROVIDER", "LLM_DEFAULT_MODEL", "LLM_MAX_TOKENS", "LLM_TEMPERATURE",
-		"OLLAMA_ENDPOINT", "OLLAMA_TIMEOUT", "OLLAMA_MAX_RETRIES", "OLLAMA_DEFAULT_MODEL",
+		"MINDNEST_LLM_DEFAULT_PROVIDER",
+		"MINDNEST_OLLAMA_ENDPOINT", "MINDNEST_OLLAMA_TIMEOUT", "MINDNEST_OLLAMA_MAX_RETRIES", "MINDNEST_OLLAMA_DEFAULT_MODEL",
 		"MINDNEST_LOG_LEVEL", "MINDNEST_WORKSPACE_AUTO_CREATE",
 	}
 
@@ -272,28 +269,31 @@ func TestLoadFromEnv(t *testing.T) {
 		os.Unsetenv(v)
 	}
 
-	// Load config with defaults
-	cfg, err := LoadFromEnv("", "", false)
+	// Create a test .env file to check for interference
+	tmpDir := t.TempDir()
+	envFile := filepath.Join(tmpDir, ".env")
+	err := os.WriteFile(envFile, []byte("# Test env file\n"), 0644)
+	assert.NoError(t, err)
+
+	// Load config with defaults using the test directory
+	cfgFromEnv, err := LoadFromEnv(tmpDir, envFile, false)
 	assert.NoError(t, err)
 
 	// Verify default values are set correctly
-	assert.Equal(t, "claude", cfg.LLM.DefaultProvider)
-	assert.Equal(t, "claude-3-7-sonnet-20250219", cfg.LLM.DefaultModel)
-	assert.Equal(t, 4096, cfg.LLM.MaxTokens)
-	assert.Equal(t, 0.1, cfg.LLM.Temperature, "Temperature precision should be exactly 0.1")
+	assert.Equal(t, "claude", cfgFromEnv.DefaultLLMProvider)
 
 	// Verify Ollama config
-	assert.Equal(t, "http://localhost:11434", cfg.Ollama.Endpoint)
-	assert.Equal(t, 5*time.Minute, cfg.Ollama.Timeout)
-	assert.Equal(t, 3, cfg.Ollama.MaxRetries)
-	assert.Equal(t, "gemma3", cfg.Ollama.DefaultModel) // Updated to match current default
-	assert.Equal(t, 100, cfg.Ollama.MaxIdleConns)
-	assert.Equal(t, 100, cfg.Ollama.MaxIdleConnsPerHost)
-	assert.Equal(t, 90*time.Second, cfg.Ollama.IdleConnTimeout)
+	assert.Equal(t, "http://localhost:11434", cfgFromEnv.Ollama.Endpoint)
+	assert.Equal(t, 120*time.Second, cfgFromEnv.Ollama.Timeout)
+	assert.Equal(t, 3, cfgFromEnv.Ollama.MaxRetries)
+	assert.Equal(t, "gemma3", cfgFromEnv.Ollama.Model) // Updated to match current default
+	assert.Equal(t, 100, cfgFromEnv.Ollama.MaxIdleConns)
+	assert.Equal(t, 100, cfgFromEnv.Ollama.MaxIdleConnsPerHost)
+	assert.Equal(t, 90*time.Second, cfgFromEnv.Ollama.IdleConnTimeout)
 
 	// Other config fields
-	assert.Equal(t, "info", cfg.Logging.Level)
-	assert.Equal(t, true, cfg.Workspace.AutoCreate)
+	assert.Equal(t, "info", cfgFromEnv.Logging.Level)
+	assert.Equal(t, true, cfgFromEnv.Workspace.AutoCreate)
 }
 
 func TestSetGet(t *testing.T) {
@@ -307,7 +307,7 @@ func TestSetGet(t *testing.T) {
 
 	// Set a config
 	testCfg := New()
-	testCfg.LLM.Temperature = 0.5 // Change a value
+	testCfg.Ollama.Temperature = 0.5 // Change a value in Ollama config
 	Set(testCfg)
 
 	// Get should work now
@@ -316,7 +316,7 @@ func TestSetGet(t *testing.T) {
 	assert.NotNil(t, cfg)
 
 	// Verify the changed value
-	assert.Equal(t, 0.5, cfg.LLM.Temperature)
+	assert.Equal(t, 0.5, cfg.Ollama.Temperature)
 }
 
 func TestValidate(t *testing.T) {
@@ -328,8 +328,7 @@ func TestValidate(t *testing.T) {
 
 	// Invalid LLM config
 	invalidLLM := New()
-	invalidLLM.LLM.DefaultProvider = ""
-	invalidLLM.LLM.DefaultModel = ""
+	invalidLLM.DefaultLLMProvider = ""
 	err = invalidLLM.Validate()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "LLM config")
@@ -337,74 +336,83 @@ func TestValidate(t *testing.T) {
 	// Invalid Ollama config
 	invalidOllama := New()
 	// Set required LLM values to pass LLM validation
-	invalidOllama.LLM.DefaultProvider = "ollama"
-	invalidOllama.LLM.DefaultModel = "model"
+	invalidOllama.DefaultLLMProvider = "ollama"
 	// Set all required Ollama values except MaxRetries
 	invalidOllama.Ollama.Endpoint = "http://localhost:11434"
-	invalidOllama.Ollama.Timeout = 5 * time.Minute
-	invalidOllama.Ollama.MaxRetries = 0 // Invalid value
-	invalidOllama.Ollama.DefaultModel = "model"
-	invalidOllama.Ollama.MaxIdleConns = 100
-	invalidOllama.Ollama.MaxIdleConnsPerHost = 100
-	invalidOllama.Ollama.IdleConnTimeout = 90 * time.Second
-
+	invalidOllama.Ollama.Timeout = 5 * time.Second
+	invalidOllama.Ollama.MaxRetries = 0 // Invalid
+	invalidOllama.Ollama.Model = "llama2"
+	invalidOllama.Ollama.MaxTokens = 100
+	invalidOllama.Ollama.Temperature = 0.7
+	invalidOllama.Ollama.MaxIdleConns = 10
+	invalidOllama.Ollama.MaxIdleConnsPerHost = 5
+	invalidOllama.Ollama.IdleConnTimeout = 5 * time.Second
 	err = invalidOllama.Validate()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "Ollama config")
+	assert.Contains(t, err.Error(), "max_retries must be positive")
 
-	// Invalid Embedding config
-	invalidEmbedding := New()
+	// Invalid RAG config
+	invalidRAG := New()
 	// Set required LLM values
-	invalidEmbedding.LLM.DefaultProvider = "ollama"
-	invalidEmbedding.LLM.DefaultModel = "model"
+	invalidRAG.DefaultLLMProvider = "ollama"
 	// Set required Ollama values
-	invalidEmbedding.Ollama.Endpoint = "http://localhost:11434"
-	invalidEmbedding.Ollama.Timeout = 5 * time.Minute
-	invalidEmbedding.Ollama.MaxRetries = 3
-	invalidEmbedding.Ollama.DefaultModel = "model"
-	invalidEmbedding.Ollama.MaxIdleConns = 100
-	invalidEmbedding.Ollama.MaxIdleConnsPerHost = 100
-	invalidEmbedding.Ollama.IdleConnTimeout = 90 * time.Second
-	// Set invalid Embedding value
-	invalidEmbedding.Embedding.Model = ""
-	invalidEmbedding.Embedding.NSimilarChunks = 5
-
-	err = invalidEmbedding.Validate()
+	invalidRAG.Ollama.Endpoint = "http://localhost:11434"
+	invalidRAG.Ollama.Timeout = 5 * time.Second
+	invalidRAG.Ollama.MaxRetries = 3
+	invalidRAG.Ollama.Model = "llama2"
+	invalidRAG.Ollama.MaxTokens = 100
+	invalidRAG.Ollama.Temperature = 0.7
+	invalidRAG.Ollama.MaxIdleConns = 10
+	invalidRAG.Ollama.MaxIdleConnsPerHost = 5
+	invalidRAG.Ollama.IdleConnTimeout = 5 * time.Second
+	// Set invalid RAG value
+	invalidRAG.RAG.NSimilarChunks = 0 // Invalid
+	invalidRAG.RAG.BatchSize = 10
+	invalidRAG.RAG.MaxFilesSameDir = 10
+	invalidRAG.RAG.ContextDepth = 2
+	err = invalidRAG.Validate()
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "embedding config")
+	assert.Contains(t, err.Error(), "RAG config")
+	assert.Contains(t, err.Error(), "number of similar chunks must be positive")
+
+	// Test another RAG validation error
+	invalidRAG.RAG.NSimilarChunks = 10
+	invalidRAG.RAG.MaxFilesSameDir = 0 // Invalid
+	err = invalidRAG.Validate()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "max files in same directory must be positive")
 
 	// Invalid logging config
 	invalidLogging := New()
 	// Set required LLM values
-	invalidLogging.LLM.DefaultProvider = "ollama"
-	invalidLogging.LLM.DefaultModel = "model"
-	// Set required Ollama values
-	invalidLogging.Ollama.Endpoint = "http://localhost:11434"
-	invalidLogging.Ollama.Timeout = 5 * time.Minute
-	invalidLogging.Ollama.MaxRetries = 3
-	invalidLogging.Ollama.DefaultModel = "model"
-	invalidLogging.Ollama.MaxIdleConns = 100
-	invalidLogging.Ollama.MaxIdleConnsPerHost = 100
-	invalidLogging.Ollama.IdleConnTimeout = 90 * time.Second
-	// Set required Embedding values
-	invalidLogging.Embedding.Model = "model"
-	invalidLogging.Embedding.NSimilarChunks = 5
-	// Set required Context values
-	invalidLogging.Context.MaxFilesSameDir = 10
-	invalidLogging.Context.ContextDepth = 3
-	// Set required Database values
-	invalidLogging.Database.Path = filepath.Join(os.TempDir(), "test.db")
+	invalidLogging.DefaultLLMProvider = "ollama"
+	// Set required database values
+	invalidLogging.Database.Path = "/tmp/test.db"
 	invalidLogging.Database.BusyTimeout = 5000
 	invalidLogging.Database.ConnMaxLife = 5 * time.Minute
 	invalidLogging.Database.QueryTimeout = 30 * time.Second
-
-	// Set invalid Logging value
-	invalidLogging.Logging.Level = "invalid"
-	invalidLogging.Logging.Format = "text"
-
+	// Set required Ollama values
+	invalidLogging.Ollama.Endpoint = "http://localhost:11434"
+	invalidLogging.Ollama.Timeout = 5 * time.Second
+	invalidLogging.Ollama.MaxRetries = 3
+	invalidLogging.Ollama.Model = "llama2"
+	invalidLogging.Ollama.MaxTokens = 100
+	invalidLogging.Ollama.Temperature = 0.7
+	invalidLogging.Ollama.MaxIdleConns = 10
+	invalidLogging.Ollama.MaxIdleConnsPerHost = 5
+	invalidLogging.Ollama.IdleConnTimeout = 5 * time.Second
+	// Set required RAG values
+	invalidLogging.RAG.NSimilarChunks = 10
+	invalidLogging.RAG.BatchSize = 20
+	invalidLogging.RAG.MaxFilesSameDir = 10
+	invalidLogging.RAG.ContextDepth = 3
+	// Set invalid logging value
+	invalidLogging.Logging.Level = "invalid" // Invalid logging level
 	err = invalidLogging.Validate()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "logging config")
+	assert.Contains(t, err.Error(), "invalid log level")
 }
 
 func TestParseLoglevel(t *testing.T) {
@@ -468,10 +476,10 @@ func TestTemperaturePrecision(t *testing.T) {
 			result := getEnvFloat("TEST_TEMP", 0.0)
 			assert.Equal(t, temp, result, "Temperature should maintain exact precision")
 
-			// Test in Config
+			// Test in Config for the Ollama temperature
 			cfg := New()
-			cfg.LLM.Temperature = temp
-			assert.Equal(t, temp, cfg.LLM.Temperature, "Temperature in config should maintain exact precision")
+			cfg.Ollama.Temperature = temp
+			assert.Equal(t, temp, cfg.Ollama.Temperature, "Temperature in config should maintain exact precision")
 		})
 	}
 }
