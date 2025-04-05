@@ -135,8 +135,21 @@ func (s *Service) ReviewFile(ctx context.Context, reviewID string, file *workspa
 	promptOptions := DefaultPromptOptions()
 	promptOptions.Language = file.Language
 
-	// Build the review prompt
-	messages, err := BuildMessageList(file, content, diffInfo, similarChunks, promptOptions)
+	// Build the review prompt based on the LLM provider
+	var messages []map[string]string
+
+	// Use different message builders for different providers
+	if s.config.DefaultLLMProvider == "gemini" {
+		// Use Gemini-specific message list
+		messages, err = BuildGeminiMessageList(file, content, diffInfo, similarChunks, promptOptions)
+	} else if s.config.DefaultLLMProvider == "ollama" {
+		// Use Ollama-specific message list
+		messages, err = BuildOllamaMessageList(file, content, diffInfo, similarChunks, promptOptions)
+	} else {
+		// Use standard message list for Claude and others
+		messages, err = BuildMessageList(file, content, diffInfo, similarChunks, promptOptions)
+	}
+
 	if err != nil {
 		// Mark review file as failed
 		reviewFile.MarkFileFailed()
