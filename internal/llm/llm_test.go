@@ -10,9 +10,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tildaslashalef/mindnest/internal/config"
+	"github.com/tildaslashalef/mindnest/internal/loggy"
 )
 
 func TestNewFactory(t *testing.T) {
+	logger := loggy.NewNoopLogger()
+
 	tests := []struct {
 		name               string
 		config             *config.Config
@@ -65,7 +68,7 @@ func TestNewFactory(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			factory := NewFactory(tt.config)
+			factory := NewFactory(tt.config, logger)
 
 			if tt.expectOllamaClient {
 				// Should have Ollama client
@@ -95,6 +98,7 @@ func TestNewFactory(t *testing.T) {
 }
 
 func TestGetClient(t *testing.T) {
+	logger := loggy.NewNoopLogger()
 	// Create config with both clients enabled
 	cfg := &config.Config{
 		Ollama: config.OllamaConfig{
@@ -106,7 +110,7 @@ func TestGetClient(t *testing.T) {
 		DefaultLLMProvider: "ollama",
 	}
 
-	factory := NewFactory(cfg)
+	factory := NewFactory(cfg, logger)
 
 	// Test getting Ollama client
 	ollamaClient, err := factory.GetClient(Ollama)
@@ -125,6 +129,7 @@ func TestGetClient(t *testing.T) {
 }
 
 func TestGetDefaultClient(t *testing.T) {
+	logger := loggy.NewNoopLogger()
 	tests := []struct {
 		name            string
 		config          *config.Config
@@ -200,7 +205,7 @@ func TestGetDefaultClient(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			factory := NewFactory(tt.config)
+			factory := NewFactory(tt.config, logger)
 
 			client, clientType, err := factory.GetDefaultClient()
 
@@ -218,6 +223,7 @@ func TestGetDefaultClient(t *testing.T) {
 }
 
 func TestFactoryErrors(t *testing.T) {
+	logger := loggy.NewNoopLogger()
 	// Test error when Ollama client is not initialized
 	cfg := &config.Config{
 		Ollama: config.OllamaConfig{
@@ -228,7 +234,7 @@ func TestFactoryErrors(t *testing.T) {
 		},
 	}
 
-	factory := NewFactory(cfg)
+	factory := NewFactory(cfg, logger)
 
 	// Test getting Ollama client
 	ollamaClient, err := factory.GetClient(Ollama)
@@ -251,6 +257,7 @@ func TestFactoryErrors(t *testing.T) {
 }
 
 func TestClientInitialization(t *testing.T) {
+	logger := loggy.NewNoopLogger()
 	// Test initialization with timeouts and retries
 	cfg := &config.Config{
 		Ollama: config.OllamaConfig{
@@ -270,7 +277,7 @@ func TestClientInitialization(t *testing.T) {
 		DefaultLLMProvider: "ollama",
 	}
 
-	factory := NewFactory(cfg)
+	factory := NewFactory(cfg, logger)
 
 	// Verify the factory is initialized
 	assert.NotNil(t, factory)
@@ -292,6 +299,7 @@ func TestClientInitialization(t *testing.T) {
 }
 
 func TestStreamingRequests(t *testing.T) {
+	logger := loggy.NewNoopLogger()
 	// Initialize config with minimal settings
 	cfg := &config.Config{
 		Ollama: config.OllamaConfig{
@@ -300,7 +308,7 @@ func TestStreamingRequests(t *testing.T) {
 		DefaultLLMProvider: "ollama",
 	}
 
-	factory := NewFactory(cfg)
+	factory := NewFactory(cfg, logger)
 
 	// Get the Ollama client
 	ollamaClient, err := factory.GetClient(Ollama)
@@ -330,6 +338,7 @@ func TestStreamingRequests(t *testing.T) {
 }
 
 func TestEmbeddingRequests(t *testing.T) {
+	logger := loggy.NewNoopLogger()
 	// Initialize config with minimal settings
 	cfg := &config.Config{
 		Ollama: config.OllamaConfig{
@@ -338,7 +347,7 @@ func TestEmbeddingRequests(t *testing.T) {
 		DefaultLLMProvider: "ollama",
 	}
 
-	factory := NewFactory(cfg)
+	factory := NewFactory(cfg, logger)
 
 	// Get the Ollama client
 	ollamaClient, err := factory.GetClient(Ollama)
@@ -422,6 +431,7 @@ func TestRequestOptions(t *testing.T) {
 }
 
 func TestInvalidRequestErrors(t *testing.T) {
+	logger := loggy.NewNoopLogger()
 	// Create config with both clients enabled
 	cfg := &config.Config{
 		Ollama: config.OllamaConfig{
@@ -433,7 +443,7 @@ func TestInvalidRequestErrors(t *testing.T) {
 		DefaultLLMProvider: "ollama",
 	}
 
-	factory := NewFactory(cfg)
+	factory := NewFactory(cfg, logger)
 
 	// Get an Ollama client
 	ollamaClient, err := factory.GetClient(Ollama)

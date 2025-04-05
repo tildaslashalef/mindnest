@@ -111,9 +111,10 @@ type Factory struct {
 }
 
 // NewFactory creates a new LLM client factory
-func NewFactory(cfg *config.Config) *Factory {
+func NewFactory(cfg *config.Config, logger *loggy.Logger) *Factory {
 	f := &Factory{
 		config: cfg,
+		logger: logger,
 	}
 
 	// Initialize Ollama client if configured
@@ -221,8 +222,8 @@ func (f *Factory) GetClient(clientType ClientType) (Client, error) {
 		if f.claude == nil {
 			return nil, fmt.Errorf("Claude client not initialized - check configuration")
 		}
-		// If Ollama is also configured, use it for embeddings
-		if f.ollama != nil {
+		// If Ollama is also configured and Claude is set to use Ollama embeddings
+		if f.ollama != nil && f.config.Claude.EmbeddingModel == "ollama" {
 			return newClaudeClientAdapterWithOllama(f.claude, f.ollama, f.config), nil
 		}
 		return newClaudeClientAdapter(f.claude, f.config), nil
@@ -230,6 +231,10 @@ func (f *Factory) GetClient(clientType ClientType) (Client, error) {
 	case Gemini:
 		if f.gemini == nil {
 			return nil, fmt.Errorf("Gemini client not initialized - check configuration")
+		}
+		// If Ollama is also configured and Gemini is set to use Ollama embeddings
+		if f.ollama != nil && f.config.Gemini.EmbeddingModel == "ollama" {
+			return newGeminiClientAdapterWithOllama(f.gemini, f.ollama, f.config), nil
 		}
 		return newGeminiClientAdapter(f.gemini, f.config), nil
 
@@ -302,4 +307,60 @@ func (f *Factory) GenerateChat(ctx context.Context, req ChatRequest) (*ChatRespo
 	}
 
 	return client.GenerateChat(ctx, req)
+}
+
+// GenerateChatStream generates a streaming chat response from the default LLM provider
+func (f *Factory) GenerateChatStream(ctx context.Context, req ChatRequest) (<-chan ChatResponse, error) {
+	f.logger.Debug("Generating streaming chat using default provider")
+
+	defaultType := f.config.DefaultLLMProvider
+
+	client, err := f.GetClient(ClientType(defaultType))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client for default provider %s: %w", defaultType, err)
+	}
+
+	return client.GenerateChatStream(ctx, req)
+}
+
+// GenerateCompletion generates a completion response from the default LLM provider
+func (f *Factory) GenerateCompletion(ctx context.Context, req GenerateRequest) (*GenerateResponse, error) {
+	f.logger.Debug("Generating completion using default provider")
+
+	defaultType := f.config.DefaultLLMProvider
+
+	client, err := f.GetClient(ClientType(defaultType))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client for default provider %s: %w", defaultType, err)
+	}
+
+	return client.GenerateCompletion(ctx, req)
+}
+
+// GenerateEmbedding generates an embedding from the default LLM provider
+func (f *Factory) GenerateEmbedding(ctx context.Context, req EmbeddingRequest) ([]float32, error) {
+	f.logger.Debug("Generating embedding using default provider")
+
+	defaultType := f.config.DefaultLLMProvider
+
+	client, err := f.GetClient(ClientType(defaultType))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client for default provider %s: %w", defaultType, err)
+	}
+
+	return client.GenerateEmbedding(ctx, req)
+}
+
+// BatchEmbeddings generates multiple embeddings from the default LLM provider
+func (f *Factory) BatchEmbeddings(ctx context.Context, reqs []EmbeddingRequest) ([][]float32, error) {
+	f.logger.Debug("Generating batch embeddings using default provider")
+
+	defaultType := f.config.DefaultLLMProvider
+
+	client, err := f.GetClient(ClientType(defaultType))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client for default provider %s: %w", defaultType, err)
+	}
+
+	return client.BatchEmbeddings(ctx, reqs)
 }

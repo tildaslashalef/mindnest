@@ -70,11 +70,13 @@ func TestNewClient(t *testing.T) {
 
 func TestGenerateChat(t *testing.T) {
 	expectedRequest := ChatRequest{
-		Model:       "test-model",
-		Contents:    []Content{{Role: "user", Parts: []Part{{Text: "Hello, world!"}}}},
-		MaxTokens:   2048,
-		Temperature: ptr(0.7),
-		Stream:      false, // Should be explicitly set to false
+		Model:    "test-model",
+		Contents: []Content{{Role: "user", Parts: []Part{{Text: "Hello, world!"}}}},
+		GenerationConfig: &GenerationConfig{
+			MaxOutputTokens: 2048,
+			Temperature:     ptr(0.7),
+		},
+		Stream: false, // Should be explicitly set to false
 	}
 
 	expectedResponse := ChatResponse{
@@ -99,8 +101,8 @@ func TestGenerateChat(t *testing.T) {
 		assert.NoError(t, err, "Should decode request body without error")
 		assert.Equal(t, expectedRequest.Model, req.Model, "Model should match")
 		assert.Equal(t, expectedRequest.Contents, req.Contents, "Contents should match")
-		assert.Equal(t, expectedRequest.MaxTokens, req.MaxTokens, "MaxTokens should match")
-		assert.Equal(t, *expectedRequest.Temperature, *req.Temperature, "Temperature should match")
+		assert.Equal(t, expectedRequest.GenerationConfig.MaxOutputTokens, req.GenerationConfig.MaxOutputTokens, "MaxOutputTokens should match")
+		assert.Equal(t, *expectedRequest.GenerationConfig.Temperature, *req.GenerationConfig.Temperature, "Temperature should match")
 		assert.Equal(t, expectedRequest.Stream, req.Stream, "Stream should match")
 
 		w.Header().Set("Content-Type", "application/json")

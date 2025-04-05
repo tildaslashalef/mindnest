@@ -105,24 +105,29 @@ func (c *Client) GenerateChat(ctx context.Context, req ChatRequest) (*ChatRespon
 		req.Model = c.defaultModel
 	}
 
+	// Initialize GenerationConfig if not present
+	if req.GenerationConfig == nil {
+		req.GenerationConfig = &GenerationConfig{}
+	}
+
 	// Set default max tokens if none specified
-	if req.MaxTokens <= 0 {
-		req.MaxTokens = c.defaultMaxTokens
+	if req.GenerationConfig.MaxOutputTokens <= 0 {
+		req.GenerationConfig.MaxOutputTokens = c.defaultMaxTokens
 	}
 
 	// Set default temperature if none specified and client has a default
-	if req.Temperature == nil && c.temperature != nil {
-		req.Temperature = c.temperature
+	if req.GenerationConfig.Temperature == nil && c.temperature != nil {
+		req.GenerationConfig.Temperature = c.temperature
 	}
 
 	// Set default top_p if none specified and client has a default
-	if req.TopP == nil && c.topP != nil {
-		req.TopP = c.topP
+	if req.GenerationConfig.TopP == nil && c.topP != nil {
+		req.GenerationConfig.TopP = c.topP
 	}
 
 	// Set default top_k if none specified and client has a default
-	if req.TopK == nil && c.topK != nil {
-		req.TopK = c.topK
+	if req.GenerationConfig.TopK == nil && c.topK != nil {
+		req.GenerationConfig.TopK = c.topK
 	}
 
 	// Force stream to false for non-streaming requests
@@ -145,24 +150,29 @@ func (c *Client) GenerateChatStream(ctx context.Context, req ChatRequest) (<-cha
 		req.Model = c.defaultModel
 	}
 
+	// Initialize GenerationConfig if not present
+	if req.GenerationConfig == nil {
+		req.GenerationConfig = &GenerationConfig{}
+	}
+
 	// Set default max tokens if none specified
-	if req.MaxTokens <= 0 {
-		req.MaxTokens = c.defaultMaxTokens
+	if req.GenerationConfig.MaxOutputTokens <= 0 {
+		req.GenerationConfig.MaxOutputTokens = c.defaultMaxTokens
 	}
 
 	// Set default temperature if none specified and client has a default
-	if req.Temperature == nil && c.temperature != nil {
-		req.Temperature = c.temperature
+	if req.GenerationConfig.Temperature == nil && c.temperature != nil {
+		req.GenerationConfig.Temperature = c.temperature
 	}
 
 	// Set default top_p if none specified and client has a default
-	if req.TopP == nil && c.topP != nil {
-		req.TopP = c.topP
+	if req.GenerationConfig.TopP == nil && c.topP != nil {
+		req.GenerationConfig.TopP = c.topP
 	}
 
 	// Set default top_k if none specified and client has a default
-	if req.TopK == nil && c.topK != nil {
-		req.TopK = c.topK
+	if req.GenerationConfig.TopK == nil && c.topK != nil {
+		req.GenerationConfig.TopK = c.topK
 	}
 
 	// Force stream to true

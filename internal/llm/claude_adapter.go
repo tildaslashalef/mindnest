@@ -185,11 +185,11 @@ func (a *claudeClientAdapter) GenerateChatStream(ctx context.Context, req ChatRe
 
 // GenerateEmbedding implements the Client interface for Claude
 func (a *claudeClientAdapter) GenerateEmbedding(ctx context.Context, req EmbeddingRequest) ([]float32, error) {
-	// If Ollama client is available, use it for embeddings
-	if a.ollama != nil {
+	// Check if we should use Ollama for embeddings
+	if a.ollama != nil && a.config.Claude.EmbeddingModel == "ollama" {
 		ollamaReq := ollama.EmbeddingRequest{
-			// Always use the embedding model from config
-			Model: a.config.Claude.EmbeddingModel,
+			// Use Ollama's embedding model from config
+			Model: a.config.Ollama.EmbeddingModel,
 			Input: req.Text,
 		}
 
@@ -197,7 +197,7 @@ func (a *claudeClientAdapter) GenerateEmbedding(ctx context.Context, req Embeddi
 		if err != nil {
 			// Try legacy endpoint as fallback
 			legacyReq := ollama.SingleEmbeddingRequest{
-				Model:  a.config.Claude.EmbeddingModel,
+				Model:  a.config.Ollama.EmbeddingModel,
 				Prompt: req.Text,
 			}
 
@@ -217,19 +217,19 @@ func (a *claudeClientAdapter) GenerateEmbedding(ctx context.Context, req Embeddi
 		return nil, fmt.Errorf("empty embedding response")
 	}
 
-	// If Ollama client is not available, return error
-	return nil, fmt.Errorf("claude does not support embeddings and no ollama client is configured")
+	// Claude doesn't natively support embeddings
+	return nil, fmt.Errorf("claude does not support embeddings natively")
 }
 
 // BatchEmbeddings implements the Client interface for Claude
 func (a *claudeClientAdapter) BatchEmbeddings(ctx context.Context, reqs []EmbeddingRequest) ([][]float32, error) {
-	// If Ollama client is available, use it for embeddings
-	if a.ollama != nil {
+	// Check if we should use Ollama for embeddings
+	if a.ollama != nil && a.config.Claude.EmbeddingModel == "ollama" {
 		ollamaReqs := make([]ollama.EmbeddingRequest, len(reqs))
 		for i, req := range reqs {
 			ollamaReqs[i] = ollama.EmbeddingRequest{
-				// Always use the embedding model from config
-				Model: a.config.Claude.EmbeddingModel,
+				// Use Ollama's embedding model from config
+				Model: a.config.Ollama.EmbeddingModel,
 				Input: req.Text,
 			}
 		}
@@ -251,8 +251,8 @@ func (a *claudeClientAdapter) BatchEmbeddings(ctx context.Context, reqs []Embedd
 		return embeddings, nil
 	}
 
-	// If Ollama client is not available, return error
-	return nil, fmt.Errorf("claude does not support embeddings and no ollama client is configured")
+	// Claude doesn't natively support embeddings
+	return nil, fmt.Errorf("claude does not support embeddings natively")
 }
 
 // GenerateCompletion implements the Client interface for Claude

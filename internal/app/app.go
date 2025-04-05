@@ -98,7 +98,7 @@ func New() (*App, error) {
 	workspaceService := workspace.NewService(workspaceRepo, logger, gitService, parserService)
 
 	// Initialize LLM client
-	llmFactory := llm.NewFactory(cfg)
+	llmFactory := llm.NewFactory(cfg, logger)
 	llmClient, llmType, err := llmFactory.GetDefaultClient()
 	if err != nil {
 		loggy.Warn("Failed to initialize LLM client, embedding functionality will be disabled", "error", err)

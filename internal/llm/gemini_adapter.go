@@ -6,11 +6,13 @@ import (
 
 	"github.com/tildaslashalef/mindnest/internal/config"
 	"github.com/tildaslashalef/mindnest/internal/gemini"
+	"github.com/tildaslashalef/mindnest/internal/ollama"
 )
 
 // geminiClientAdapter adapts the Gemini client to the LLM Client interface
 type geminiClientAdapter struct {
 	client *gemini.Client
+	ollama *ollama.Client // Added for alternative embedding support
 	config *config.Config
 }
 
@@ -18,6 +20,15 @@ type geminiClientAdapter struct {
 func newGeminiClientAdapter(client *gemini.Client, cfg *config.Config) *geminiClientAdapter {
 	return &geminiClientAdapter{
 		client: client,
+		config: cfg,
+	}
+}
+
+// newGeminiClientAdapterWithOllama creates a new Gemini client adapter with Ollama for embeddings
+func newGeminiClientAdapterWithOllama(geminiClient *gemini.Client, ollamaClient *ollama.Client, cfg *config.Config) *geminiClientAdapter {
+	return &geminiClientAdapter{
+		client: geminiClient,
+		ollama: ollamaClient,
 		config: cfg,
 	}
 }
@@ -35,23 +46,28 @@ func (a *geminiClientAdapter) GenerateChat(ctx context.Context, req ChatRequest)
 		}
 	}
 
-	// Create Gemini request
-	geminiReq := gemini.ChatRequest{
-		Model:       req.Model,
-		Contents:    contents,
-		MaxTokens:   req.MaxTokens,
-		Temperature: getTemperature(req.Temperature),
-		Stream:      req.Stream,
+	// Create generation config
+	generationConfig := &gemini.GenerationConfig{
+		MaxOutputTokens: req.MaxTokens,
+		Temperature:     getTemperature(req.Temperature),
 	}
 
 	// Set options if provided
 	if req.Options != nil {
 		if topP, ok := req.Options["top_p"].(float64); ok {
-			geminiReq.TopP = &topP
+			generationConfig.TopP = &topP
 		}
 		if topK, ok := req.Options["top_k"].(int); ok {
-			geminiReq.TopK = &topK
+			generationConfig.TopK = &topK
 		}
+	}
+
+	// Create Gemini request
+	geminiReq := gemini.ChatRequest{
+		Model:            req.Model,
+		Contents:         contents,
+		GenerationConfig: generationConfig,
+		Stream:           req.Stream,
 	}
 
 	// Make the request
@@ -87,23 +103,28 @@ func (a *geminiClientAdapter) GenerateChatStream(ctx context.Context, req ChatRe
 		}
 	}
 
-	// Create Gemini request
-	geminiReq := gemini.ChatRequest{
-		Model:       req.Model,
-		Contents:    contents,
-		MaxTokens:   req.MaxTokens,
-		Temperature: getTemperature(req.Temperature),
-		Stream:      true,
+	// Create generation config
+	generationConfig := &gemini.GenerationConfig{
+		MaxOutputTokens: req.MaxTokens,
+		Temperature:     getTemperature(req.Temperature),
 	}
 
 	// Set options if provided
 	if req.Options != nil {
 		if topP, ok := req.Options["top_p"].(float64); ok {
-			geminiReq.TopP = &topP
+			generationConfig.TopP = &topP
 		}
 		if topK, ok := req.Options["top_k"].(int); ok {
-			geminiReq.TopK = &topK
+			generationConfig.TopK = &topK
 		}
+	}
+
+	// Create Gemini request
+	geminiReq := gemini.ChatRequest{
+		Model:            req.Model,
+		Contents:         contents,
+		GenerationConfig: generationConfig,
+		Stream:           true,
 	}
 
 	// Get the stream channel
@@ -161,13 +182,28 @@ func (a *geminiClientAdapter) GenerateCompletion(ctx context.Context, req Genera
 		contents = append([]gemini.Content{systemContent}, contents...)
 	}
 
+	// Create generation config
+	generationConfig := &gemini.GenerationConfig{
+		MaxOutputTokens: req.MaxTokens,
+		Temperature:     getTemperature(req.Temperature),
+	}
+
+	// Set options if provided
+	if req.Options != nil {
+		if topP, ok := req.Options["top_p"].(float64); ok {
+			generationConfig.TopP = &topP
+		}
+		if topK, ok := req.Options["top_k"].(int); ok {
+			generationConfig.TopK = &topK
+		}
+	}
+
 	// Create Gemini request
 	geminiReq := gemini.ChatRequest{
-		Model:       req.Model,
-		Contents:    contents,
-		MaxTokens:   req.MaxTokens,
-		Temperature: getTemperature(req.Temperature),
-		Stream:      false,
+		Model:            req.Model,
+		Contents:         contents,
+		GenerationConfig: generationConfig,
+		Stream:           false,
 	}
 
 	// Make the request
@@ -192,6 +228,39 @@ func (a *geminiClientAdapter) GenerateCompletion(ctx context.Context, req Genera
 
 // GenerateEmbedding implements the Client interface for Gemini
 func (a *geminiClientAdapter) GenerateEmbedding(ctx context.Context, req EmbeddingRequest) ([]float32, error) {
+	// Check if we should use Ollama for embeddings
+	if a.ollama != nil && a.config.Gemini.EmbeddingModel == "ollama" {
+		ollamaReq := ollama.EmbeddingRequest{
+			// Use Ollama's embedding model from config
+			Model: a.config.Ollama.EmbeddingModel,
+			Input: req.Text,
+		}
+
+		resp, err := a.ollama.GenerateEmbedding(ctx, ollamaReq)
+		if err != nil {
+			// Try legacy endpoint as fallback
+			legacyReq := ollama.SingleEmbeddingRequest{
+				Model:  a.config.Ollama.EmbeddingModel,
+				Prompt: req.Text,
+			}
+
+			legacyResp, legacyErr := a.ollama.GenerateSingleEmbedding(ctx, legacyReq)
+			if legacyErr != nil {
+				return nil, fmt.Errorf("ollama embedding generation failed: %w", err)
+			}
+
+			return legacyResp.Embedding, nil
+		}
+
+		// For the new /api/embed endpoint, we expect an array of embeddings
+		if len(resp.Embeddings) > 0 {
+			return resp.Embeddings[0], nil
+		}
+
+		return nil, fmt.Errorf("empty embedding response")
+	}
+
+	// Otherwise use Gemini's embedding
 	geminiReq := gemini.EmbeddingRequest{
 		// Always use the embedding model from config
 		Model: a.config.Gemini.EmbeddingModel,
@@ -208,6 +277,35 @@ func (a *geminiClientAdapter) GenerateEmbedding(ctx context.Context, req Embeddi
 
 // BatchEmbeddings implements the Client interface for Gemini
 func (a *geminiClientAdapter) BatchEmbeddings(ctx context.Context, reqs []EmbeddingRequest) ([][]float32, error) {
+	// Check if we should use Ollama for embeddings
+	if a.ollama != nil && a.config.Gemini.EmbeddingModel == "ollama" {
+		ollamaReqs := make([]ollama.EmbeddingRequest, len(reqs))
+		for i, req := range reqs {
+			ollamaReqs[i] = ollama.EmbeddingRequest{
+				// Use Ollama's embedding model from config
+				Model: a.config.Ollama.EmbeddingModel,
+				Input: req.Text,
+			}
+		}
+
+		resps, err := a.ollama.BatchEmbeddings(ctx, ollamaReqs)
+		if err != nil {
+			return nil, fmt.Errorf("ollama batch embedding generation failed: %w", err)
+		}
+
+		embeddings := make([][]float32, len(resps))
+		for i, resp := range resps {
+			if len(resp.Embeddings) > 0 {
+				embeddings[i] = resp.Embeddings[0]
+			} else {
+				embeddings[i] = []float32{}
+			}
+		}
+
+		return embeddings, nil
+	}
+
+	// Otherwise use Gemini's embedding
 	// Convert requests
 	geminiReqs := make([]gemini.EmbeddingRequest, len(reqs))
 	for i, req := range reqs {

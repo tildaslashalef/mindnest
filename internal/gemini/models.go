@@ -12,15 +12,20 @@ type MessagePart struct {
 	Text string `json:"text,omitempty"`
 }
 
+// GenerationConfig holds parameters for generation configuration
+type GenerationConfig struct {
+	MaxOutputTokens int      `json:"maxOutputTokens,omitempty"`
+	Temperature     *float64 `json:"temperature,omitempty"`
+	TopP            *float64 `json:"topP,omitempty"`
+	TopK            *int     `json:"topK,omitempty"`
+}
+
 // ChatRequest represents a request to the Gemini API for chat completion
 type ChatRequest struct {
-	Model       string    `json:"model,omitempty"`
-	Contents    []Content `json:"contents"`
-	MaxTokens   int       `json:"maxOutputTokens,omitempty"`
-	Temperature *float64  `json:"temperature,omitempty"`
-	TopP        *float64  `json:"topP,omitempty"`
-	TopK        *int      `json:"topK,omitempty"`
-	Stream      bool      `json:"stream,omitempty"`
+	Model            string            `json:"model,omitempty"`
+	Contents         []Content         `json:"contents"`
+	GenerationConfig *GenerationConfig `json:"generationConfig,omitempty"`
+	Stream           bool              `json:"stream,omitempty"`
 }
 
 // Content represents content in a chat message
