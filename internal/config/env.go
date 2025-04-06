@@ -32,11 +32,6 @@ func LoadFromEnv(configDir string, configFilePath string, isInitializing bool) (
 			return nil, fmt.Errorf("failed to create config directory: %w", err)
 		}
 
-		// If we're initializing, set up config directory with all necessary files
-		if isInitializing {
-			// We don't call SetupConfigDirectory here because the init command does it explicitly
-			// after creating the directory to maintain control over the process
-		}
 	}
 
 	// Default database path is in the config directory
@@ -68,12 +63,12 @@ func LoadFromEnv(configDir string, configFilePath string, isInitializing bool) (
 	}
 
 	// LLM Configuration
-	cfg.DefaultLLMProvider = getEnvString("MINDNEST_LLM_DEFAULT_PROVIDER", "claude")
+	cfg.DefaultLLMProvider = getEnvString("MINDNEST_LLM_DEFAULT_PROVIDER", "ollama")
 
 	// Load Ollama Configuration
 	cfg.Ollama = OllamaConfig{
 		Endpoint:            getEnvString("MINDNEST_OLLAMA_ENDPOINT", "http://localhost:11434"),
-		Timeout:             getEnvDuration("MINDNEST_OLLAMA_TIMEOUT", 120*time.Second),
+		Timeout:             getEnvDuration("MINDNEST_OLLAMA_TIMEOUT", 600*time.Second),
 		MaxRetries:          getEnvInt("MINDNEST_OLLAMA_MAX_RETRIES", 3),
 		Model:               getEnvString("MINDNEST_OLLAMA_MODEL", "gemma3"),
 		EmbeddingModel:      getEnvString("MINDNEST_OLLAMA_EMBEDDING_MODEL", "nomic-embed-text"),
@@ -81,7 +76,7 @@ func LoadFromEnv(configDir string, configFilePath string, isInitializing bool) (
 		Temperature:         getEnvFloat("MINDNEST_OLLAMA_TEMPERATURE", 0.7),
 		MaxIdleConns:        getEnvInt("MINDNEST_OLLAMA_MAX_IDLE_CONNS", 100),
 		MaxIdleConnsPerHost: getEnvInt("MINDNEST_OLLAMA_MAX_IDLE_CONNS_PER_HOST", 100),
-		IdleConnTimeout:     getEnvDuration("MINDNEST_OLLAMA_IDLE_CONN_TIMEOUT", 90*time.Second),
+		IdleConnTimeout:     getEnvDuration("MINDNEST_OLLAMA_IDLE_CONN_TIMEOUT", 120*time.Second),
 	}
 
 	// Load Claude config
@@ -98,7 +93,7 @@ func LoadFromEnv(configDir string, configFilePath string, isInitializing bool) (
 		APIKey:           getEnvString("MINDNEST_CLAUDE_API_KEY", ""),
 		BaseURL:          getEnvString("MINDNEST_CLAUDE_BASE_URL", "https://api.anthropic.com"),
 		Model:            getEnvString("MINDNEST_CLAUDE_MODEL", "claude-3-7-sonnet-20250219"),
-		EmbeddingModel:   getEnvString("MINDNEST_CLAUDE_EMBEDDING_MODEL", "nomic-embed-text"),
+		EmbeddingModel:   getEnvString("MINDNEST_CLAUDE_EMBEDDING_MODEL", "ollama"),
 		Timeout:          getEnvDuration("MINDNEST_CLAUDE_TIMEOUT", 60*time.Second),
 		MaxRetries:       getEnvInt("MINDNEST_CLAUDE_MAX_RETRIES", 3),
 		MaxTokens:        getEnvInt("MINDNEST_CLAUDE_MAX_TOKENS", 4096),
@@ -130,10 +125,17 @@ func LoadFromEnv(configDir string, configFilePath string, isInitializing bool) (
 
 	// RAG Configuration (formerly Embedding config)
 	cfg.RAG = RAGConfig{
-		NSimilarChunks:  getEnvInt("MINDNEST_RAG_N_SIMILAR_CHUNKS", 10),
+		NSimilarChunks:  getEnvInt("MINDNEST_RAG_N_SIMILAR_CHUNKS", 5),
 		BatchSize:       getEnvInt("MINDNEST_RAG_BATCH_SIZE", 20),
 		MaxFilesSameDir: getEnvInt("MINDNEST_CONTEXT_MAX_FILES_SAME_DIR", 10),
-		ContextDepth:    getEnvInt("MINDNEST_CONTEXT_CONTEXT_DEPTH", 2),
+		ContextDepth:    getEnvInt("MINDNEST_CONTEXT_CONTEXT_DEPTH", 3),
+
+		// Vector operation configurations
+		DefaultMetric:     getEnvString("MINDNEST_RAG_DEFAULT_METRIC", "cosine"), // NOTE: Only cosine distance is supported by the vector_index table.
+		Normalization:     getEnvBool("MINDNEST_RAG_NORMALIZATION", true),
+		MinSimilarity:     getEnvFloat("MINDNEST_RAG_MIN_SIMILARITY", 0.0),
+		VectorType:        getEnvString("MINDNEST_RAG_VECTOR_TYPE", "float32"),
+		EnableCompression: getEnvBool("MINDNEST_RAG_ENABLE_COMPRESSION", false),
 	}
 
 	// GitHub Configuration

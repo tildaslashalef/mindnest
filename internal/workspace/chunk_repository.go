@@ -44,7 +44,6 @@ func (r *SQLRepository) SaveChunk(ctx context.Context, chunk *Chunk) error {
 			"parent_id",
 			"child_ids",
 			"metadata",
-			"vector_id",
 			"created_at",
 			"updated_at",
 		).
@@ -63,7 +62,6 @@ func (r *SQLRepository) SaveChunk(ctx context.Context, chunk *Chunk) error {
 			chunk.ParentID,
 			childIDsJSON,
 			chunk.Metadata,
-			chunk.VectorID,
 			chunk.CreatedAt,
 			chunk.UpdatedAt,
 		)
@@ -98,7 +96,6 @@ func (r *SQLRepository) GetChunkByID(ctx context.Context, chunkID string) (*Chun
 		"parent_id",
 		"child_ids",
 		"metadata",
-		"vector_id",
 		"created_at",
 		"updated_at",
 	).
@@ -136,7 +133,6 @@ func (r *SQLRepository) GetChunksByFileID(ctx context.Context, fileID string) ([
 		"parent_id",
 		"child_ids",
 		"metadata",
-		"vector_id",
 		"created_at",
 		"updated_at",
 	).
@@ -188,7 +184,6 @@ func (r *SQLRepository) GetChunksByWorkspaceID(ctx context.Context, workspaceID 
 		"parent_id",
 		"child_ids",
 		"metadata",
-		"vector_id",
 		"created_at",
 		"updated_at",
 	).
@@ -239,7 +234,6 @@ func (r *SQLRepository) GetChunksByType(ctx context.Context, workspaceID string,
 		"parent_id",
 		"child_ids",
 		"metadata",
-		"vector_id",
 		"created_at",
 		"updated_at",
 	).
@@ -297,7 +291,6 @@ func (r *SQLRepository) UpdateChunk(ctx context.Context, chunk *Chunk) error {
 		Set("parent_id", chunk.ParentID).
 		Set("child_ids", childIDsJSON).
 		Set("metadata", chunk.Metadata).
-		Set("vector_id", chunk.VectorID).
 		Set("updated_at", time.Now()).
 		Where(sq.Eq{"id": chunk.ID})
 
@@ -402,7 +395,6 @@ func (r *SQLRepository) SaveChunksForFile(ctx context.Context, file *File, chunk
 				"parent_id",
 				"child_ids",
 				"metadata",
-				"vector_id",
 				"created_at",
 				"updated_at",
 			).
@@ -421,7 +413,6 @@ func (r *SQLRepository) SaveChunksForFile(ctx context.Context, file *File, chunk
 				chunk.ParentID,
 				childIDsJSON,
 				chunk.Metadata,
-				chunk.VectorID,
 				chunk.CreatedAt,
 				chunk.UpdatedAt,
 			)
@@ -470,7 +461,6 @@ func (r *SQLRepository) scanChunk(scanner interface {
 	var chunk Chunk
 	var startLine, endLine, startOffset, endOffset int
 	var childIDsJSON []byte
-	var vectorID sql.NullInt64
 	var metadata sql.NullString // Use NullString to handle NULL metadata values
 
 	var err error
@@ -491,7 +481,6 @@ func (r *SQLRepository) scanChunk(scanner interface {
 			&chunk.ParentID,
 			&childIDsJSON,
 			&metadata, // Use NullString for metadata
-			&vectorID,
 			&chunk.CreatedAt,
 			&chunk.UpdatedAt,
 		)
@@ -511,7 +500,6 @@ func (r *SQLRepository) scanChunk(scanner interface {
 			&chunk.ParentID,
 			&childIDsJSON,
 			&metadata, // Use NullString for metadata
-			&vectorID,
 			&chunk.CreatedAt,
 			&chunk.UpdatedAt,
 		)
@@ -563,11 +551,6 @@ func (r *SQLRepository) scanChunk(scanner interface {
 	} else {
 		// Initialize empty metadata
 		chunk.Metadata = json.RawMessage("{}")
-	}
-
-	// Set vector ID if valid
-	if vectorID.Valid {
-		chunk.VectorID = vectorID
 	}
 
 	return &chunk, nil

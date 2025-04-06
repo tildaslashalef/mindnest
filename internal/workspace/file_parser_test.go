@@ -374,7 +374,7 @@ func main() {
 	mockRepo.On("SaveChunksForFile", mock.Anything, mock.AnythingOfType("*workspace.File"), mock.AnythingOfType("[]*workspace.Chunk")).Return(nil)
 
 	// Setup service
-	service := NewService(mockRepo, logger, nil, parserService)
+	service := NewServiceWithRepository(mockRepo, logger, nil, parserService)
 
 	// Modify the file to trigger refresh
 	time.Sleep(10 * time.Millisecond) // Ensure file mod time is different

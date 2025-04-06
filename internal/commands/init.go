@@ -20,6 +20,14 @@ func InitCommand() *cli.Command {
 		Description: "Sets up the Mindnest environment including configuration directory " +
 			"and database with necessary tables. Use this command for first-time setup " +
 			"or to update your database schema after upgrading Mindnest to a new version.",
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:    "force",
+				Aliases: []string{"f"},
+				Usage:   "Remove existing database before initialization",
+				Value:   false,
+			},
+		},
 		Action: func(c *cli.Context) error {
 			utils.PrintHeading("Initializing Mindnest")
 
@@ -58,8 +66,49 @@ func InitCommand() *cli.Command {
 				return fmt.Errorf("failed to load configuration: %w", err)
 			}
 
+			// Check if force flag is set
+			if c.Bool("force") {
+				utils.PrintWarning("Force flag detected, this will remove existing database")
+
+				// Ask for confirmation
+				fmt.Print("Are you sure you want to proceed? This cannot be undone. [y/N]: ")
+				var response string
+				if _, err := fmt.Scanln(&response); err != nil {
+					utils.PrintWarning("Error reading input, assuming 'No'")
+					return nil
+				}
+
+				if response != "y" && response != "Y" {
+					utils.PrintInfo("Operation canceled by user")
+					return nil
+				}
+
+				// Close any potential open database connections first
+				if err := database.CloseDB(); err != nil {
+					utils.PrintWarning(fmt.Sprintf("Failed to properly close database: %s", err))
+					// Continue anyway as we're going to delete the files
+				}
+
+				// Delete main database file and all associated journal files
+				if cfg.Database.Path != "" {
+					dbPath := cfg.Database.Path
+					utils.PrintWarning("Removing database files at: " + dbPath)
+
+					// Remove main database file
+					if err := os.Remove(dbPath); err != nil && !os.IsNotExist(err) {
+						utils.PrintError(fmt.Sprintf("Failed to remove database file: %s", err))
+					}
+
+					// Also remove SQLite journal files
+					os.Remove(dbPath + "-wal")
+					os.Remove(dbPath + "-shm")
+
+					utils.PrintSuccess("Existing database files removed successfully")
+				}
+			}
+
 			// Initialize database directly with our loaded configuration
-			utils.PrintInfo("Initializing database...")
+			utils.PrintInfo("Initializing new database...")
 			if err := database.InitDB(cfg); err != nil {
 				utils.PrintError(fmt.Sprintf("Failed to initialize database: %s", err))
 				return fmt.Errorf("failed to initialize database: %w", err)

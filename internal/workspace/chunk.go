@@ -2,7 +2,6 @@
 package workspace
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -53,7 +52,6 @@ type Chunk struct {
 	ParentID    string          `json:"parent_id,omitempty"`
 	ChildIDs    []string        `json:"child_ids,omitempty"`
 	Metadata    json.RawMessage `json:"metadata,omitempty"`
-	VectorID    sql.NullInt64   `json:"vector_id,omitempty"`
 	CreatedAt   time.Time       `json:"created_at"`
 	UpdatedAt   time.Time       `json:"updated_at"`
 }
@@ -143,15 +141,6 @@ func (c *Chunk) GetMetadata(target interface{}) error {
 	}
 
 	return nil
-}
-
-// SetVectorID sets the vector ID for the chunk's embedding
-func (c *Chunk) SetVectorID(vectorID int64) {
-	c.VectorID = sql.NullInt64{
-		Int64: vectorID,
-		Valid: true,
-	}
-	c.UpdatedAt = time.Now()
 }
 
 // StartLine returns the start line of the chunk (for compatibility)

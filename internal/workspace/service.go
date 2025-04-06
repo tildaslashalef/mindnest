@@ -3,6 +3,7 @@ package workspace
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -24,7 +25,29 @@ type Service struct {
 }
 
 // NewService creates a new workspace service
-func NewService(repo Repository, logger *loggy.Logger, gitService *git.Service, parserService *parser.Service) *Service {
+func NewService(
+	db *sql.DB,
+	logger *loggy.Logger,
+	gitService *git.Service,
+	parserService *parser.Service,
+) *Service {
+	repo := NewSQLRepository(db, logger)
+
+	return &Service{
+		repo:          repo,
+		logger:        logger,
+		gitService:    gitService,
+		parserService: parserService,
+	}
+}
+
+// NewServiceWithRepository creates a service with a custom repository implementation (for testing)
+func NewServiceWithRepository(
+	repo Repository,
+	logger *loggy.Logger,
+	gitService *git.Service,
+	parserService *parser.Service,
+) *Service {
 	return &Service{
 		repo:          repo,
 		logger:        logger,

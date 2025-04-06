@@ -384,6 +384,13 @@ func (c *Client) makeRequest(ctx context.Context, method, path string, reqBody i
 		return fmt.Errorf("reading response body: %w", err)
 	}
 
+	// Log response details
+	loggy.Debug("Ollama API response",
+		"status", resp.Status,
+		"status_code", resp.StatusCode,
+		"content_length", len(bodyBytes),
+		"response_body", string(bodyBytes))
+
 	// Check for non-200 status
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(bodyBytes))

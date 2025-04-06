@@ -34,33 +34,27 @@ type Service struct {
 	client           *Client
 	config           *config.Config
 	logger           *loggy.Logger
-	settingsRepo     config.SettingsRepository
-	workspaceService interface{}
+	settingsService  *config.SettingsService
+	workspaceService *workspace.Service
 }
 
 // NewService creates a new GitHub service
 func NewService(
 	config *config.Config,
 	logger *loggy.Logger,
+	settingsService *config.SettingsService,
+	workspaceService *workspace.Service,
 ) *Service {
 	// Create client with token from config
 	client := NewClient(config.GitHub.Token)
 
 	return &Service{
-		client: client,
-		config: config,
-		logger: logger,
+		client:           client,
+		config:           config,
+		logger:           logger,
+		settingsService:  settingsService,
+		workspaceService: workspaceService,
 	}
-}
-
-// SetSettingsRepository sets the settings repository for persisting configuration
-func (s *Service) SetSettingsRepository(repo config.SettingsRepository) {
-	s.settingsRepo = repo
-}
-
-// SetWorkspaceService sets the workspace service to use for workspace lookups
-func (s *Service) SetWorkspaceService(service interface{}) {
-	s.workspaceService = service
 }
 
 // SubmitPRComment submits a comment to a GitHub PR with user-provided content
@@ -70,32 +64,24 @@ func (s *Service) SubmitPRComment(ctx context.Context, comment *PRComment) error
 
 	// If WorkspaceID is provided and we have a workspace service, try to get repository details
 	if comment.WorkspaceID != "" && s.workspaceService != nil {
-		// Check if the workspace service has the GetWorkspace method
-		if wsService, ok := s.workspaceService.(interface {
-			GetWorkspace(context.Context, string) (*workspace.Workspace, error)
-		}); ok {
-			// Get workspace and extract owner/repo from GitRepoURL
-			ws, err := wsService.GetWorkspace(ctx, comment.WorkspaceID)
-			if err == nil && ws.GitRepoURL != "" {
-				extractedOwner, extractedRepo, err := s.ExtractRepoDetailsFromURL(ws.GitRepoURL)
-				if err == nil {
-					owner = extractedOwner
-					repo = extractedRepo
-					s.logger.Debug("Using repository details from workspace",
-						"workspace_id", comment.WorkspaceID,
-						"git_repo_url", ws.GitRepoURL,
-						"owner", owner,
-						"repo", repo)
-				} else {
-					s.logger.Warn("Failed to extract repo details from workspace GitRepoURL",
-						"workspace_id", comment.WorkspaceID,
-						"git_repo_url", ws.GitRepoURL,
-						"error", err)
-				}
+		// Get workspace and extract owner/repo from GitRepoURL
+		ws, err := s.workspaceService.GetWorkspace(ctx, comment.WorkspaceID)
+		if err == nil && ws.GitRepoURL != "" {
+			extractedOwner, extractedRepo, err := s.ExtractRepoDetailsFromURL(ws.GitRepoURL)
+			if err == nil {
+				owner = extractedOwner
+				repo = extractedRepo
+				s.logger.Debug("Using repository details from workspace",
+					"workspace_id", comment.WorkspaceID,
+					"git_repo_url", ws.GitRepoURL,
+					"owner", owner,
+					"repo", repo)
+			} else {
+				s.logger.Warn("Failed to extract repo details from workspace GitRepoURL",
+					"workspace_id", comment.WorkspaceID,
+					"git_repo_url", ws.GitRepoURL,
+					"error", err)
 			}
-		} else {
-			s.logger.Debug("WorkspaceID provided, but workspace service doesn't have GetWorkspace method",
-				"workspace_id", comment.WorkspaceID)
 		}
 	}
 
@@ -224,11 +210,13 @@ func (s *Service) ExtractRepoDetailsFromURL(gitURL string) (owner, repo string, 
 }
 
 // GetRepoDetailsFromWorkspace gets the owner and repo from workspace
-func (s *Service) GetRepoDetailsFromWorkspace(ctx context.Context, workspaceID string, workspaceService interface {
-	GetWorkspace(ctx context.Context, id string) (*workspace.Workspace, error)
-}) (owner, repo string, err error) {
-	// Get the workspace using the provided service
-	ws, err := workspaceService.GetWorkspace(ctx, workspaceID)
+func (s *Service) GetRepoDetailsFromWorkspace(ctx context.Context, workspaceID string) (owner, repo string, err error) {
+	// Get the workspace using the internal workspace service
+	if s.workspaceService == nil {
+		return "", "", fmt.Errorf("workspace service not set")
+	}
+
+	ws, err := s.workspaceService.GetWorkspace(ctx, workspaceID)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to get workspace: %w", err)
 	}

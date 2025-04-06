@@ -280,16 +280,16 @@ func TestLoadFromEnv(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Verify default values are set correctly
-	assert.Equal(t, "claude", cfgFromEnv.DefaultLLMProvider)
+	assert.Equal(t, "ollama", cfgFromEnv.DefaultLLMProvider)
 
 	// Verify Ollama config
 	assert.Equal(t, "http://localhost:11434", cfgFromEnv.Ollama.Endpoint)
-	assert.Equal(t, 120*time.Second, cfgFromEnv.Ollama.Timeout)
+	assert.Equal(t, 600*time.Second, cfgFromEnv.Ollama.Timeout)
 	assert.Equal(t, 3, cfgFromEnv.Ollama.MaxRetries)
 	assert.Equal(t, "gemma3", cfgFromEnv.Ollama.Model) // Updated to match current default
 	assert.Equal(t, 100, cfgFromEnv.Ollama.MaxIdleConns)
 	assert.Equal(t, 100, cfgFromEnv.Ollama.MaxIdleConnsPerHost)
-	assert.Equal(t, 90*time.Second, cfgFromEnv.Ollama.IdleConnTimeout)
+	assert.Equal(t, 120*time.Second, cfgFromEnv.Ollama.IdleConnTimeout)
 
 	// Other config fields
 	assert.Equal(t, "info", cfgFromEnv.Logging.Level)

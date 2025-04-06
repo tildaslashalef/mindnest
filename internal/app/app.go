@@ -3,9 +3,9 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/tildaslashalef/mindnest/internal/config"
 	"github.com/tildaslashalef/mindnest/internal/database"
@@ -29,30 +29,20 @@ type App struct {
 	Review    *review.Service
 	Sync      *sync.Service
 	GitHub    *github.Service
-	Settings  config.SettingsRepository
+	Settings  *config.SettingsService
 }
 
 // New initializes a new application instance with all its dependencies
 func New() (*App, error) {
-	// Load configuration with default paths, not in initialization mode
-	cfg, err := config.LoadFromEnv("", "", false)
+	// Initialize configuration
+	cfg, err := initConfig()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load configuration: %w", err)
+		return nil, err
 	}
 
-	// Set the global configuration
-	config.Set(cfg)
-
-	// Initialize logger early so we can log
-	err = loggy.Init(loggy.Config{
-		Level:      config.ParseLogLevel(cfg.Logging.Level),
-		Format:     cfg.Logging.Format,
-		Output:     cfg.Logging.Output,
-		AddSource:  cfg.Logging.AddSource,
-		TimeFormat: cfg.Logging.TimeFormat,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize logger: %w", err)
+	// Initialize logger
+	if err := initLogger(cfg); err != nil {
+		return nil, err
 	}
 
 	// Log initialization information
@@ -61,67 +51,94 @@ func New() (*App, error) {
 		"log_level", cfg.Logging.Level,
 	)
 
-	// 4. Ensure necessary directories exist
-	if err := ensureDirectories(cfg); err != nil {
-		return nil, fmt.Errorf("failed to create necessary directories: %w", err)
-	}
-
-	// 5. Initialize database
+	// Initialize database
 	if err := database.InitDB(cfg); err != nil {
 		return nil, fmt.Errorf("failed to initialize database: %w", err)
 	}
 
-	// 6. Initialize workspace repository and service
+	// Get database connection
 	db, err := database.DB()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database connection: %w", err)
 	}
 
-	logger := loggy.GetGlobalLogger()
+	// Initialize all services
+	app, err := initServices(cfg, db)
+	if err != nil {
+		return nil, err
+	}
 
-	// Initialize settings repository and load persistent settings
-	settingsRepo := config.NewSQLSettingsRepository(db, logger)
+	loggy.Info("Application initialized successfully")
+	return app, nil
+}
+
+// initConfig loads and sets up the application configuration
+func initConfig() (*config.Config, error) {
+	// Load configuration with default paths, not in initialization mode
+	cfg, err := config.LoadFromEnv("", "", false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	// Set the global configuration
+	config.Set(cfg)
+	return cfg, nil
+}
+
+// initLogger initializes the logging system
+func initLogger(cfg *config.Config) error {
+	err := loggy.Init(loggy.Config{
+		Level:      config.ParseLogLevel(cfg.Logging.Level),
+		Format:     cfg.Logging.Format,
+		Output:     cfg.Logging.Output,
+		AddSource:  cfg.Logging.AddSource,
+		TimeFormat: cfg.Logging.TimeFormat,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to initialize logger: %w", err)
+	}
+	return nil
+}
+
+// initServices initializes all application services
+func initServices(cfg *config.Config, db *sql.DB) (*App, error) {
+	logger := loggy.GetGlobalLogger()
 	ctx := context.Background()
-	if err := config.LoadSyncSettings(ctx, cfg, settingsRepo); err != nil {
+
+	// Core services initialization
+	settingsService := config.NewSettingsService(db, cfg, logger)
+	if err := settingsService.LoadSyncSettings(ctx); err != nil {
 		loggy.Warn("Failed to load sync settings from database", "error", err)
 		// Continue anyway, using defaults
 	}
 
-	// Initialize git service
+	// Initialize supporting services
 	gitService := git.NewService(logger)
-
-	// Initialize parser service
 	parserService := parser.NewService(logger)
 
-	// Initialize workspace repository and service
-	workspaceRepo := workspace.NewSQLRepository(db, logger)
-	workspaceService := workspace.NewService(workspaceRepo, logger, gitService, parserService)
+	// Initialize primary services
+	workspaceService := workspace.NewService(db, logger, gitService, parserService)
 
 	// Initialize LLM client
-	llmFactory := llm.NewFactory(cfg, logger)
-	llmClient, llmType, err := llmFactory.GetDefaultClient()
+	llmClient, llmType, err := initLLMClient(cfg, logger)
 	if err != nil {
+		// Non-fatal error, continue with nil client
 		loggy.Warn("Failed to initialize LLM client, embedding functionality will be disabled", "error", err)
 	} else {
 		loggy.Info("Initialized LLM client", "type", llmType)
 	}
 
-	// Initialize RAG vector repository
-	vectorRepo := rag.NewSQLRepository(db, logger)
-
-	// Initialize RAG service with full functionality
+	// Initialize application services
 	ragService := rag.NewService(
 		workspaceService,
-		vectorRepo,
+		db,
 		llmClient,
 		cfg,
 		logger,
 	)
 
-	// Initialize review repository and service
-	reviewRepo := review.NewSQLRepository(db, logger)
 	reviewService := review.NewService(
-		reviewRepo,
+		db,
 		workspaceService,
 		ragService,
 		llmClient,
@@ -129,32 +146,23 @@ func New() (*App, error) {
 		logger,
 	)
 
-	// Initialize sync repository and service
-	syncRepo := sync.NewSQLRepository(db, logger)
 	syncService := sync.NewService(
 		cfg,
-		syncRepo,
-		workspaceRepo,
 		workspaceService,
-		reviewRepo,
+		db,
 		reviewService,
+		settingsService,
 		logger,
 	)
 
-	// Attach the settings repository to the sync service
-	syncService.SetSettingsRepository(settingsRepo)
-
-	// Initialize GitHub service
 	githubService := github.NewService(
 		cfg,
 		logger,
+		settingsService,
+		workspaceService,
 	)
-	githubService.SetSettingsRepository(settingsRepo)
-	// Set workspace service for repository URL lookup
-	githubService.SetWorkspaceService(workspaceService)
 
-	loggy.Info("Application initialized successfully")
-
+	// Return the initialized application
 	return &App{
 		Config:    cfg,
 		Workspace: workspaceService,
@@ -162,8 +170,14 @@ func New() (*App, error) {
 		Review:    reviewService,
 		Sync:      syncService,
 		GitHub:    githubService,
-		Settings:  settingsRepo,
+		Settings:  settingsService,
 	}, nil
+}
+
+// initLLMClient initializes the LLM client
+func initLLMClient(cfg *config.Config, logger *loggy.Logger) (llm.Client, llm.ClientType, error) {
+	llmFactory := llm.NewFactory(cfg, logger)
+	return llmFactory.GetDefaultClient()
 }
 
 // Shutdown gracefully shuts down the application
@@ -190,17 +204,4 @@ func FromContext(c *cli.Context) (*App, error) {
 	}
 
 	return app, nil
-}
-
-// ensureDirectories creates necessary directories for the application
-func ensureDirectories(cfg *config.Config) error {
-	// Ensure database directory exists
-	dbDir := filepath.Dir(cfg.Database.Path)
-	if dbDir != "" && dbDir != "." && dbDir != ":memory:" {
-		if err := os.MkdirAll(dbDir, 0755); err != nil {
-			return fmt.Errorf("failed to create database directory: %w", err)
-		}
-	}
-
-	return nil
 }

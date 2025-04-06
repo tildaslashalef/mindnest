@@ -58,6 +58,13 @@ type RAGConfig struct {
 	BatchSize       int // Number of chunks to process in each batch
 	MaxFilesSameDir int // Maximum number of files to include from the same directory for context
 	ContextDepth    int // How deep to search in the directory hierarchy for context
+
+	// Vector operation configurations
+	DefaultMetric     string  // Default distance metric (cosine, l2, dot, hamming)
+	Normalization     bool    // Whether to normalize vectors by default (true recommended)
+	MinSimilarity     float64 // Default minimum similarity threshold (0.0-1.0)
+	VectorType        string  // Default vector compression type (float32, int8, binary)
+	EnableCompression bool    // Whether to use compression by default
 }
 
 // GitHubConfig represents GitHub-specific configuration
@@ -184,7 +191,7 @@ func New() *Config {
 		Ollama:             OllamaConfig{},
 		Claude:             ClaudeConfig{},
 		Gemini:             GeminiConfig{},
-		RAG:                RAGConfig{}, // Now includes context fields
+		RAG:                RAGConfig{},
 		GitHub:             GitHubConfig{},
 		Workspace:          WorkspaceConfig{},
 		Database:           DatabaseConfig{},

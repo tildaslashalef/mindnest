@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -17,22 +18,19 @@ type Service struct {
 	config           *config.Config
 	client           *Client
 	repo             Repository
-	workspaceRepo    workspace.Repository
 	workspaceService *workspace.Service
-	reviewRepo       review.Repository
 	reviewService    *review.Service
 	logger           *loggy.Logger
-	settingsRepo     config.SettingsRepository
+	settingsService  *config.SettingsService
 }
 
 // NewService creates a new sync service
 func NewService(
 	cfg *config.Config,
-	syncRepo Repository,
-	workspaceRepo workspace.Repository,
 	workspaceService *workspace.Service,
-	reviewRepo review.Repository,
+	db *sql.DB,
 	reviewService *review.Service,
+	settingsService *config.SettingsService,
 	logger *loggy.Logger,
 ) *Service {
 	// Create HTTP client
@@ -43,33 +41,46 @@ func NewService(
 		logger,
 	)
 
+	// Create sync repository
+	syncRepo := NewSQLRepository(db, logger)
+
+	// Give the client access to settings
+	if client != nil && settingsService != nil {
+		client.SetSettingsRepository(settingsService.GetRepository())
+	}
+
 	return &Service{
 		config:           cfg,
 		client:           client,
 		repo:             syncRepo,
-		workspaceRepo:    workspaceRepo,
 		workspaceService: workspaceService,
-		reviewRepo:       reviewRepo,
 		reviewService:    reviewService,
+		settingsService:  settingsService,
 		logger:           logger,
 	}
 }
 
 // IsConfigured returns whether the sync service is configured
 func (s *Service) IsConfigured() bool {
-	enabled, err := s.settingsRepo.GetSetting(context.Background(), "sync.enabled")
+	if s.settingsService == nil {
+		s.logger.Error("Settings service not initialized")
+		return false
+	}
+
+	ctx := context.Background()
+	enabled, err := s.settingsService.GetSetting(ctx, "sync.enabled")
 	if err != nil {
 		s.logger.Error("Failed to get sync enabled status", "error", err)
 		return false
 	}
 
-	serverToken, err := s.settingsRepo.GetSetting(context.Background(), "sync.server_token")
+	serverToken, err := s.settingsService.GetSetting(ctx, "sync.server_token")
 	if err != nil {
 		s.logger.Error("Failed to get sync server token", "error", err)
 		return false
 	}
 
-	serverURL, err := s.settingsRepo.GetSetting(context.Background(), "sync.server_url")
+	serverURL, err := s.settingsService.GetSetting(ctx, "sync.server_url")
 	if err != nil {
 		s.logger.Error("Failed to get sync server URL", "error", err)
 		return false
@@ -83,10 +94,10 @@ func (s *Service) SetToken(token string) error {
 	s.config.Server.Token = token
 	s.client.SetToken(token)
 
-	// Save to persistent storage if settings repo is available
-	if s.settingsRepo != nil {
+	// Save to persistent storage if settings service is available
+	if s.settingsService != nil {
 		ctx := context.Background()
-		if err := s.settingsRepo.SetSetting(ctx, "sync.server_token", token); err != nil {
+		if err := s.settingsService.SetToken(ctx, token); err != nil {
 			s.logger.Warn("Failed to save token to settings", "error", err)
 			// Continue anyway, the in-memory setting was updated
 		} else {
@@ -94,11 +105,7 @@ func (s *Service) SetToken(token string) error {
 		}
 
 		// Update enabled status if token is set or cleared
-		enabledStr := "false"
-		if token != "" {
-			enabledStr = "true"
-		}
-		if err := s.settingsRepo.SetSetting(ctx, "sync.enabled", enabledStr); err != nil {
+		if err := s.settingsService.SetSyncEnabled(ctx, token != ""); err != nil {
 			s.logger.Warn("Failed to save enabled status to settings", "error", err)
 		}
 	}
@@ -949,21 +956,11 @@ func (s *Service) SyncAll(ctx context.Context) (*SyncResult, error) {
 	return result, nil
 }
 
-// SetSettingsRepository sets the settings repository for the service
-func (s *Service) SetSettingsRepository(repo config.SettingsRepository) {
-	s.settingsRepo = repo
-
-	// Also set the repository for the client
-	if s.client != nil {
-		s.client.SetSettingsRepository(repo)
-	}
-}
-
 // SaveSettings persists the current sync settings to the database
 func (s *Service) SaveSettings(ctx context.Context) error {
-	if s.settingsRepo == nil {
-		return fmt.Errorf("settings repository not initialized")
+	if s.settingsService == nil {
+		return fmt.Errorf("settings service not initialized")
 	}
 
-	return config.SaveSyncSettings(ctx, s.config, s.settingsRepo)
+	return s.settingsService.SaveSyncSettings(ctx)
 }

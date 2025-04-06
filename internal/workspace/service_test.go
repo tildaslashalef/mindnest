@@ -203,7 +203,7 @@ func TestWorkspaceService(t *testing.T) {
 	var parserService *parser.Service
 
 	// Create the service with the mock repository
-	service := NewService(mockRepo, logger, gitService, parserService)
+	service := NewServiceWithRepository(mockRepo, logger, gitService, parserService)
 
 	// Sample workspace with path set to the temporary directory
 	sampleWorkspace := &Workspace{

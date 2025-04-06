@@ -2,6 +2,7 @@ package review
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -26,13 +27,15 @@ type Service struct {
 
 // NewService creates a new review service
 func NewService(
-	repo Repository,
+	db *sql.DB,
 	workspaceService *workspace.Service,
 	ragService *rag.Service,
 	llmClient llm.Client,
 	config *config.Config,
 	logger *loggy.Logger,
 ) *Service {
+	repo := NewSQLRepository(db, logger)
+
 	return &Service{
 		repo:             repo,
 		workspaceService: workspaceService,
@@ -208,11 +211,6 @@ func (s *Service) ReviewFile(ctx context.Context, reviewID string, file *workspa
 		return nil, fmt.Errorf("generating chat: %w", err)
 	}
 
-	s.logger.Debug("LLM raw response",
-		"model", chatReq.Model,
-		"content_length", len(response.Content),
-		"content", response.Content)
-
 	jsonExtractor := extractor.NewJSONExtractor(s.logger)
 	// Extract the JSON from the response
 	llmResponse, err := jsonExtractor.ExtractLLMReviewOutput(response.Content)
@@ -372,8 +370,18 @@ func (s *Service) CompleteReview(ctx context.Context, reviewID string) (*Review,
 
 // findSimilarChunks finds chunks similar to the content
 func (s *Service) findSimilarChunks(ctx context.Context, file *workspace.File, content string) ([]*workspace.Chunk, error) {
-	// Get at most 3 similar chunks to manage prompt size
-	scoredChunks, err := s.ragService.FindSimilarChunksExcludingFile(ctx, content, file.WorkspaceID, string(workspace.ChunkTypeFile), file.ID, 3)
+	// Create search options with config defaults
+	opts := rag.NewSearchOptions().
+		WithConfigDefaults(s.config).
+		WithWorkspace(file.WorkspaceID).
+		WithChunkType(workspace.ChunkTypeFile)
+	// Exclude the current file
+	if file.ID != "" {
+		opts.WithExcludeFile(file.ID)
+	}
+
+	// Use the optimized vector store search
+	scoredChunks, err := s.ragService.FindSimilarUsingStore(ctx, content, opts)
 	if err != nil {
 		return nil, fmt.Errorf("finding similar chunks: %w", err)
 	}
