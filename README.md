@@ -38,7 +38,7 @@ Mindnest is a toy project that I'm developing in my spare time. It's not product
 - Git
 - [Ollama](https://github.com/ollama/ollama) default LLM for code reviews and embeddings using `nomic-embed-text`
 - [Claude](https://console.anthropic.com/) API Key (optional, for LLM support)
-- [Gemini](https://console.google.com/gemini) API Key (optional, for LLM support)
+- [Gemini](https://aistudio.google.com/apikey) API Key (optional, for LLM support)
 - [Github](https://github.com) API Key (optional, for Github integration)
 
 ### Download Pre-built Binaries
