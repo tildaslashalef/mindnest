@@ -11,6 +11,7 @@ Mindnest is an LLM-powered code review tool designed to help developers improve 
 ╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝╚═════╝ ╚═╝  ╚═══╝╚══════╝╚══════╝   ╚═╝   
 ```
 
+
 ## Features
 
 - Self-hosted binary with no cloud dependencies required
@@ -18,10 +19,15 @@ Mindnest is an LLM-powered code review tool designed to help developers improve 
 - Context-aware code analysis with vector embeddings
 - Automatic workspace management for different projects
 - Git integration for reviewing staged changes, commits, or branch differences
+- Github integration for submitting PR comments
 - Intelligent code chunking and similarity search
 - Vector database for storing and retrieving code embeddings
 - Privacy-first: all processing happens locally on your machine
 - Zero-configuration: embedded migrations and automatic setup
+
+## Disclaimer
+
+Mindnest is a toy project that I'm developing in my spare time. It's not production-ready and should not be used in any critical environments.
 
 ## Installation
 
@@ -30,8 +36,10 @@ Mindnest is an LLM-powered code review tool designed to help developers improve 
 - Go 1.24 or later
 - SQLite
 - Git
-- [Ollama](https://github.com/ollama/ollama) default LLM for RAG embeddings using `nomic-embed-text`
-- [Claude](https://console.anthropic.com/) API Key if you want to use the LLM
+- [Ollama](https://github.com/ollama/ollama) default LLM for code reviews and embeddings using `nomic-embed-text`
+- [Claude](https://console.anthropic.com/) API Key (optional, for LLM support)
+- [Gemini](https://console.google.com/gemini) API Key (optional, for LLM support)
+- [Github](https://github.com) API Key (optional, for Github integration)
 
 ### Download Pre-built Binaries
 
@@ -291,29 +299,4 @@ Ahmed ElSebaei (@tildaslashalef)
 
 ## Contributing
 
-Contributions to Mindnest are welcome and appreciated! Here's how you can contribute:
-
-### Getting Started
-
-1. Fork the repository
-2. Create a new branch (`git checkout -b feature/your-feature-name`)
-3. Make your changes
-4. Run tests to ensure everything works as expected
-5. Commit your changes (`git commit -m 'Add some feature'`)
-6. Push to the branch (`git push origin feature/your-feature-name`)
-7. Open a Pull Request
-
-### Development Guidelines
-
-- Follow the Go style guide and code conventions
-- Write tests for new features and bug fixes
-- Document your code and update the README if necessary
-- Keep pull requests focused on a single feature or bug fix
-
-### Reporting Issues
-
-If you find a bug or have a feature request, please open an issue on the GitHub repository with a clear description of the problem or suggestion.
-
-### Code of Conduct
-
-Please be respectful and considerate of others when contributing to this project. We aim to foster an inclusive and welcoming community.
+Please refer to the [CONTRIBUTING.md](CONTRIBUTING.md) file for more information on how to contribute to Mindnest.

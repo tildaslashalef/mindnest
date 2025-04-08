@@ -3,8 +3,6 @@ GO           := go
 GOFMT        := gofmt
 GOBUILD      := $(GO) build
 GOTEST       := $(GO) test
-GOVET        := $(GO) vet
-GOGET        := $(GO) get
 GOMOD        := $(GO) mod
 BINARY_NAME  := mindnest
 BUILD_DIR    := bin
@@ -23,8 +21,9 @@ LDFLAGS      := -ldflags="-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_T
 # Supported platforms for cross-compilation
 PLATFORMS    := linux/amd64 darwin/amd64 darwin/arm64
 
-.PHONY: all build test clean deps lint format help run install migrate
+.PHONY: all build run install clean cross-build test test-short coverage deps format lint lint-deps lint-check migrate help dev quick
 
+# Main targets
 all: test build ## Run tests and build
 
 build: ## Build the binary for current platform
@@ -38,44 +37,10 @@ run: build ## Build and run the application
 install: build ## Install the application to GOPATH/bin
 	cp $(BUILD_DIR)/$(BINARY_NAME) $(GOPATH)/bin/
 
-test: ## Run tests
-	$(GOTEST) -race -v ./...
-
-test-short: ## Run tests in short mode
-	$(GOTEST) -race -v -short ./...
-
-coverage: ## Generate test coverage report
-	@mkdir -p $(COVERAGE_DIR)
-	$(GOTEST) -race -coverprofile=$(COVERAGE_DIR)/coverage.out ./...
-	$(GO) tool cover -html=$(COVERAGE_DIR)/coverage.out -o $(COVERAGE_DIR)/coverage.html
-	@echo "Coverage report available at $(COVERAGE_DIR)/coverage.html"
-
 clean: ## Clean build artifacts
 	rm -rf $(BUILD_DIR)
 	rm -rf $(COVERAGE_DIR)
 	$(GO) clean -testcache
-
-deps: ## Download and verify dependencies
-	$(GOMOD) download
-	$(GOMOD) verify
-	$(GOMOD) tidy
-
-lint-deps: ## Ensure linting tools are installed
-	@which golangci-lint > /dev/null || (echo "Installing golangci-lint..." && go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
-	@which revive > /dev/null || (echo "Installing revive..." && go install github.com/mgechev/revive@latest)
-	@echo "Linting dependencies are installed"
-
-lint: lint-deps ## Run linters
-	golangci-lint run --fix --verbose
-
-lint-check: lint-deps ## Check linting without fixing (useful for CI)
-	golangci-lint run --verbose
-
-format: ## Format code
-	$(GOFMT) -w -s .
-
-migrate: ## Run database migrations
-	$(GO) run ./cmd/mindnest migrate up
 
 # Cross compilation
 cross-build: ## Build for multiple platforms
@@ -93,15 +58,52 @@ cross-build: ## Build for multiple platforms
 		echo "Built $(OUTFILE) with CGO_ENABLED=$(CGO_FLAG)" ; \
 	)
 
+# Testing targets
+test: ## Run tests
+	$(GOTEST) -race -v ./...
+
+test-short: ## Run tests in short mode
+	$(GOTEST) -race -v -short ./...
+
+coverage: ## Generate test coverage report
+	@mkdir -p $(COVERAGE_DIR)
+	$(GOTEST) -race -coverprofile=$(COVERAGE_DIR)/coverage.out ./...
+	$(GO) tool cover -html=$(COVERAGE_DIR)/coverage.out -o $(COVERAGE_DIR)/coverage.html
+	@echo "Coverage report available at $(COVERAGE_DIR)/coverage.html"
+
+# Development targets
+deps: ## Download and verify dependencies
+	$(GOMOD) download
+	$(GOMOD) verify
+	$(GOMOD) tidy
+
+format: ## Format code
+	$(GOFMT) -w -s .
+
+lint-deps: ## Ensure linting tools are installed
+	@which golangci-lint > /dev/null || (echo "Installing golangci-lint..." && go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
+	@which revive > /dev/null || (echo "Installing revive..." && go install github.com/mgechev/revive@latest)
+	@echo "Linting dependencies are installed"
+
+lint: lint-deps ## Run linters
+	golangci-lint run --fix --verbose
+
+lint-check: lint-deps ## Check linting without fixing (useful for CI)
+	golangci-lint run --verbose
+
+migrate: ## Run database migrations
+	$(GO) run ./cmd/mindnest migrate up
+
+# Development targets
+dev: format lint test build ## Development build with all checks
+
+quick: build ## Quick build without tests
+
+# Help
 help: ## Display this help
 	@echo "Mindnest Makefile"
 	@echo "================="
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Targets:"
-	@grep -h -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
-
-# Development shortcuts
-.PHONY: dev quick
-dev: format lint test build ## Development build with all checks
-quick: build ## Quick build without tests 
+	@grep -h -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}' 
