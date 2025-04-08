@@ -214,6 +214,8 @@ graph TB
     subgraph External["External Services"]
         Ollama["Ollama LLM"]
         Claude["Claude LLM"]
+        Gemini["Gemini LLM"]
+        GitHub["GitHub"]
         Server["Mindnest Server (In Development)"]
     end
 
@@ -247,7 +249,9 @@ graph TB
     %% External service connections
     LLM --> Ollama
     LLM --> Claude
+    LLM --> Gemini
     Sync --> Server
+    Git --> GitHub
 
     %% UI to Service connections
     TUI --> Review
@@ -265,7 +269,7 @@ graph TB
 
     class CLI,CMD,ReviewCmd,WorkspaceCmd,SyncCmd primary;
     class Services,WS,Review,Git,LLM,RAG,Parser,Sync secondary;
-    class External,Ollama,Claude external;
+    class External,Ollama,Claude,Gemini,GitHub external;
     class Server indev;
     class UI,TUI,Components,Navigation ui;
 
@@ -284,7 +288,6 @@ A key feature under development is the centralized Mindnest Web Server that will
 - Sync and share code reviews across team members
 - Collaborate on code improvements with shared comments and annotations
 - Track review history and progress across projects
-- Integrate with existing CI/CD pipelines and code review workflows
 - Provide team-wide insights and metrics on code quality
 
 The Mindnest Web Server will act as a central hub for development teams to coordinate their code review processes, making collaborative code improvement more efficient while leveraging the power of LLM-assisted analysis. Users can continue using Mindnest as a fully local tool or choose to connect to the centralized server when team collaboration is needed.
