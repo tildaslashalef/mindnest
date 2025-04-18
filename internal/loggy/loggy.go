@@ -70,28 +70,21 @@ func Init(cfg Config) error {
 			output = file
 		}
 
-		var handler slog.Handler
 		handlerOpts := &slog.HandlerOptions{
-			Level:       cfg.Level,
-			AddSource:   cfg.AddSource,
-			ReplaceAttr: cfg.ReplaceAttr,
-		}
-
-		if cfg.TimeFormat != "" {
-			originalReplaceAttr := handlerOpts.ReplaceAttr
-			handlerOpts.ReplaceAttr = func(groups []string, a slog.Attr) slog.Attr {
+			Level:     cfg.Level,
+			AddSource: true,
+			ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+				// Format time according to config
 				if a.Key == slog.TimeKey {
 					if t, ok := a.Value.Any().(time.Time); ok {
 						return slog.String(a.Key, t.Format(cfg.TimeFormat))
 					}
 				}
-				if originalReplaceAttr != nil {
-					return originalReplaceAttr(groups, a)
-				}
 				return a
-			}
+			},
 		}
 
+		var handler slog.Handler
 		if cfg.Format == "json" {
 			handler = slog.NewJSONHandler(output, handlerOpts)
 		} else {
@@ -149,58 +142,55 @@ func getCaller(skip int) (string, int) {
 // Debug logs at debug level
 func Debug(msg string, args ...any) {
 	if globalLogger != nil {
-		file, line := getCaller(2) // Skip 2 frames: this function and runtime.Caller
-		globalLogger.logWithSource(slog.LevelDebug, file, line, msg, args...)
+		_, _ = getCaller(2) // Skip 2 frames: this function and runtime.Caller
+		globalLogger.logWithSource(slog.LevelDebug, msg, args...)
 	}
 }
 
 // Info logs at info level
 func Info(msg string, args ...any) {
 	if globalLogger != nil {
-		file, line := getCaller(2)
-		globalLogger.logWithSource(slog.LevelInfo, file, line, msg, args...)
+		_, _ = getCaller(2)
+		globalLogger.logWithSource(slog.LevelInfo, msg, args...)
 	}
 }
 
 // Warn logs at warn level
 func Warn(msg string, args ...any) {
 	if globalLogger != nil {
-		file, line := getCaller(2)
-		globalLogger.logWithSource(slog.LevelWarn, file, line, msg, args...)
+		_, _ = getCaller(2)
+		globalLogger.logWithSource(slog.LevelWarn, msg, args...)
 	}
 }
 
 // Error logs at error level
 func Error(msg string, args ...any) {
 	if globalLogger != nil {
-		file, line := getCaller(2)
-		globalLogger.logWithSource(slog.LevelError, file, line, msg, args...)
+		_, _ = getCaller(2)
+		globalLogger.logWithSource(slog.LevelError, msg, args...)
 	}
 }
 
 // Log logs at the specified level
 func Log(level slog.Level, msg string, args ...any) {
 	if globalLogger != nil {
-		file, line := getCaller(2)
-		globalLogger.logWithSource(level, file, line, msg, args...)
+		_, _ = getCaller(2)
+		globalLogger.logWithSource(level, msg, args...)
 	}
 }
 
 // logWithSource adds source information and logs the message
-func (l *Logger) logWithSource(level slog.Level, file string, line int, msg string, args ...any) {
+func (l *Logger) logWithSource(level slog.Level, msg string, args ...any) {
 	if l != nil && l.slogger != nil {
-		// Create a new context with the source location
-		ctx := context.Background()
+		// Get the caller's source location
+		pc, _, _, _ := runtime.Caller(2)
 
-		// Create a Record with source information
-		r := slog.NewRecord(time.Now(), level, msg, 0)
-		r.AddAttrs(slog.String("source", fmt.Sprintf("%s:%d", file, line)))
-
-		// Add the other args
+		// Create the record with proper source location
+		r := slog.NewRecord(time.Now(), level, msg, pc)
 		r.Add(args...)
 
-		// Log with this record
-		l.slogger.Handler().Handle(ctx, r)
+		// Let the handler handle the record
+		l.slogger.Handler().Handle(context.Background(), r)
 	}
 }
 
@@ -254,36 +244,36 @@ func WithContext(ctx context.Context) *Logger {
 // Logger instance methods
 func (l *Logger) Debug(msg string, args ...any) {
 	if l != nil && l.slogger != nil {
-		file, line := getCaller(2)
-		l.logWithSource(slog.LevelDebug, file, line, msg, args...)
+		_, _ = getCaller(2)
+		l.logWithSource(slog.LevelDebug, msg, args...)
 	}
 }
 
 func (l *Logger) Info(msg string, args ...any) {
 	if l != nil && l.slogger != nil {
-		file, line := getCaller(2)
-		l.logWithSource(slog.LevelInfo, file, line, msg, args...)
+		_, _ = getCaller(2)
+		l.logWithSource(slog.LevelInfo, msg, args...)
 	}
 }
 
 func (l *Logger) Warn(msg string, args ...any) {
 	if l != nil && l.slogger != nil {
-		file, line := getCaller(2)
-		l.logWithSource(slog.LevelWarn, file, line, msg, args...)
+		_, _ = getCaller(2)
+		l.logWithSource(slog.LevelWarn, msg, args...)
 	}
 }
 
 func (l *Logger) Error(msg string, args ...any) {
 	if l != nil && l.slogger != nil {
-		file, line := getCaller(2)
-		l.logWithSource(slog.LevelError, file, line, msg, args...)
+		_, _ = getCaller(2)
+		l.logWithSource(slog.LevelError, msg, args...)
 	}
 }
 
 func (l *Logger) Log(ctx context.Context, level slog.Level, msg string, args ...any) {
 	if l != nil && l.slogger != nil {
-		file, line := getCaller(2)
-		l.logWithSource(level, file, line, msg, args...)
+		_, _ = getCaller(2)
+		l.logWithSource(level, msg, args...)
 	}
 }
 

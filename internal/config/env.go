@@ -169,7 +169,7 @@ func LoadFromEnv(configDir string, configFilePath string, isInitializing bool) (
 		Format:     getEnvString("MINDNEST_LOG_FORMAT", "text"),
 		Output:     getEnvString("MINDNEST_LOG_OUTPUT", defaultLogPath),
 		AddSource:  getEnvBool("MINDNEST_LOG_ADD_SOURCE", true),
-		TimeFormat: getEnvString("MINDNEST_LOG_TIME_FORMAT", time.RFC3339),
+		TimeFormat: getTimeFormat(getEnvString("MINDNEST_LOG_TIME_FORMAT", "RFC3339")),
 	}
 
 	// Server Configuration

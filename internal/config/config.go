@@ -479,6 +479,46 @@ func getEnvFloat(key string, defaultValue float64) float64 {
 	return defaultValue
 }
 
+// getTimeFormat converts a named time format to its actual format string
+func getTimeFormat(name string) string {
+	switch name {
+	case "RFC3339":
+		return time.RFC3339
+	case "RFC3339Nano":
+		return time.RFC3339Nano
+	case "RFC822":
+		return time.RFC822
+	case "RFC822Z":
+		return time.RFC822Z
+	case "RFC850":
+		return time.RFC850
+	case "RFC1123":
+		return time.RFC1123
+	case "RFC1123Z":
+		return time.RFC1123Z
+	case "Kitchen":
+		return time.Kitchen
+	case "Stamp":
+		return time.Stamp
+	case "StampMilli":
+		return time.StampMilli
+	case "StampMicro":
+		return time.StampMicro
+	case "StampNano":
+		return time.StampNano
+	case "DateTime":
+		return "2006-01-02 15:04:05"
+	case "DateTimeMS":
+		return "2006-01-02 15:04:05.000"
+	case "Date":
+		return "2006-01-02"
+	case "Time":
+		return "15:04:05"
+	default:
+		return name
+	}
+}
+
 // checkDirectoryWritable tests if a directory is writable
 func checkDirectoryWritable(dir string) error {
 	// Create a temporary file to test write permissions

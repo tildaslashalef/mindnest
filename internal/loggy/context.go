@@ -104,26 +104,26 @@ func (l *Logger) WithError(err error) *Logger {
 // Printf provides compatibility with the standard library logger interface
 func Printf(format string, v ...interface{}) {
 	if globalLogger != nil {
-		file, line := getCaller(2)
+		_, _ = getCaller(2)
 		msg := fmt.Sprintf(format, v...)
-		globalLogger.logWithSource(slog.LevelInfo, file, line, msg)
+		globalLogger.logWithSource(slog.LevelInfo, msg)
 	}
 }
 
 // Println provides compatibility with the standard library logger interface
 func Println(v ...interface{}) {
 	if globalLogger != nil {
-		file, line := getCaller(2)
+		_, _ = getCaller(2)
 		msg := fmt.Sprint(v...)
-		globalLogger.logWithSource(slog.LevelInfo, file, line, msg)
+		globalLogger.logWithSource(slog.LevelInfo, msg)
 	}
 }
 
 // Fatal logs at error level and then exits
 func Fatal(msg string, args ...any) {
 	if globalLogger != nil {
-		file, line := getCaller(2)
-		globalLogger.logWithSource(slog.LevelError, file, line, msg, args...)
+		_, _ = getCaller(2)
+		globalLogger.logWithSource(slog.LevelError, msg, args...)
 	}
 	panic(msg) // Will be caught by the recovery handler, if any
 }
