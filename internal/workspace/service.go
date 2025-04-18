@@ -61,6 +61,15 @@ func (s *Service) GetRepository() Repository {
 	return s.repo
 }
 
+// initGitRepo initializes the Git repository for the workspace path
+func (s *Service) initGitRepo(path string) error {
+	if err := s.gitService.InitRepo(path); err != nil {
+		s.logger.Warn("Failed to initialize Git repository", "path", path, "error", err)
+		return fmt.Errorf("initializing git repository: %w", err)
+	}
+	return nil
+}
+
 // CreateWorkspace creates a new workspace
 func (s *Service) CreateWorkspace(ctx context.Context, path, name string, cfg *config.Config, description, gitRepoURL string) (*Workspace, error) {
 	// Normalize path to absolute path
@@ -83,6 +92,13 @@ func (s *Service) CreateWorkspace(ctx context.Context, path, name string, cfg *c
 	ws, err := New(absPath, name, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create workspace: %w", err)
+	}
+
+	// Initialize Git repository
+	if err := s.initGitRepo(absPath); err != nil {
+		s.logger.Warn("Failed to initialize Git repository, continuing without Git support",
+			"path", absPath,
+			"error", err)
 	}
 
 	// Set optional fields
@@ -212,6 +228,13 @@ func (s *Service) GetCurrentWorkspace(ctx context.Context, cfg *config.Config) (
 		}
 
 		return nil, fmt.Errorf("no workspace found for directory %s (auto-create disabled)", currentDir)
+	}
+
+	// Initialize Git repository for existing workspace
+	if err := s.initGitRepo(workspace.Path); err != nil {
+		s.logger.Warn("Failed to initialize Git repository for existing workspace",
+			"path", workspace.Path,
+			"error", err)
 	}
 
 	s.logger.Info("Using workspace", "id", workspace.ID, "name", workspace.Name)
@@ -589,6 +612,11 @@ func (s *Service) ParseChangedFiles(ctx context.Context, workspaceID string, dif
 
 // ParseStagedChanges parses staged changes in a Git repository and returns file IDs
 func (s *Service) ParseStagedChanges(ctx context.Context, workspaceID string, repoPath string) ([]string, error) {
+	// Initialize Git repository before getting staged changes
+	if err := s.initGitRepo(repoPath); err != nil {
+		return nil, fmt.Errorf("initializing git repository: %w", err)
+	}
+
 	// Get staged changes from git service
 	diffResult, err := s.gitService.GetDiff(git.DiffRequest{
 		RepoPath: repoPath,
@@ -647,6 +675,11 @@ func (s *Service) ParseStagedChanges(ctx context.Context, workspaceID string, re
 
 // ParseCommitChanges parses changes in a specific Git commit and returns file IDs
 func (s *Service) ParseCommitChanges(ctx context.Context, workspaceID string, repoPath string, commitHash string) ([]string, error) {
+	// Initialize Git repository before getting commit changes
+	if err := s.initGitRepo(repoPath); err != nil {
+		return nil, fmt.Errorf("initializing git repository: %w", err)
+	}
+
 	// Get commit changes from git service
 	diffResult, err := s.gitService.GetDiff(git.DiffRequest{
 		RepoPath: repoPath,
@@ -663,6 +696,11 @@ func (s *Service) ParseCommitChanges(ctx context.Context, workspaceID string, re
 
 // ParseBranchChanges parses changes between two Git branches and returns file IDs
 func (s *Service) ParseBranchChanges(ctx context.Context, workspaceID string, repoPath string, baseBranch string, compareBranch string) ([]string, error) {
+	// Initialize Git repository before getting branch changes
+	if err := s.initGitRepo(repoPath); err != nil {
+		return nil, fmt.Errorf("initializing git repository: %w", err)
+	}
+
 	// Get branch changes from git service
 	diffResult, err := s.gitService.GetDiff(git.DiffRequest{
 		RepoPath:  repoPath,
@@ -680,5 +718,7 @@ func (s *Service) ParseBranchChanges(ctx context.Context, workspaceID string, re
 
 // HasGitRepo checks if the provided path contains a valid Git repository
 func (s *Service) HasGitRepo(path string) bool {
-	return s.gitService.HasGitRepo(path)
+	// Try to initialize the Git repository
+	err := s.initGitRepo(path)
+	return err == nil
 }

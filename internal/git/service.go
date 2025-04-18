@@ -2,10 +2,10 @@
 package git
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"log/slog"
+	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/go-git/go-git/v5"
@@ -18,6 +18,7 @@ import (
 // Service provides Git operations
 type Service struct {
 	logger *loggy.Logger
+	repo   *git.Repository
 }
 
 // NewService creates a new Git service
@@ -25,6 +26,25 @@ func NewService(logger *loggy.Logger) *Service {
 	return &Service{
 		logger: logger,
 	}
+}
+
+// InitRepo initializes the git repository for the service
+func (s *Service) InitRepo(repoPath string) error {
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return fmt.Errorf("opening git repo: %w", err)
+	}
+
+	s.repo = repo
+	return nil
+}
+
+// ensureRepo ensures the repository is initialized before performing operations
+func (s *Service) ensureRepo() error {
+	if s.repo == nil {
+		return fmt.Errorf("git repository not initialized")
+	}
+	return nil
 }
 
 // HasGitRepo checks if the provided path contains a valid Git repository
@@ -41,29 +61,28 @@ func (s *Service) HasGitRepo(path string) bool {
 
 // GetDiff retrieves a diff based on the request parameters
 func (s *Service) GetDiff(req DiffRequest) (*DiffResult, error) {
-	repo, err := git.PlainOpen(req.RepoPath)
-	if err != nil {
-		return nil, fmt.Errorf("opening git repository: %w", err)
+	if err := s.ensureRepo(); err != nil {
+		return nil, err
 	}
 
 	switch req.DiffType {
 	case DiffTypeStaged:
-		return s.getStagedDiff(repo)
+		return s.getStagedDiff()
 	case DiffTypeCommit:
-		return s.getCommitDiff(repo, req.CommitID)
+		return s.getCommitDiff(req.CommitID)
 	case DiffTypeBranch:
-		return s.getBranchDiff(repo, req.BranchOne, req.BranchTwo)
+		return s.getBranchDiff(req.BranchOne, req.BranchTwo)
 	default:
 		return nil, fmt.Errorf("unsupported diff type: %s", req.DiffType)
 	}
 }
 
 // getStagedDiff retrieves staged changes in the repository
-func (s *Service) getStagedDiff(repo *git.Repository) (*DiffResult, error) {
+func (s *Service) getStagedDiff() (*DiffResult, error) {
 	// Debug info
 	s.logger.Debug("Starting getStagedDiff")
 
-	worktree, err := repo.Worktree()
+	worktree, err := s.repo.Worktree()
 	if err != nil {
 		s.logger.Debug("Error getting worktree", "error", err)
 		return nil, fmt.Errorf("getting worktree: %w", err)
@@ -105,7 +124,7 @@ func (s *Service) getStagedDiff(repo *git.Repository) (*DiffResult, error) {
 				"staging_status", fmt.Sprintf("%d", fileStatus.Staging))
 
 			// Get the content and patch from the index
-			patch, content, err := getStagedFileContent(repo, worktree, filePath, changeType)
+			patch, content, err := getStagedFileContent(s.repo, worktree, filePath, changeType)
 			if err != nil {
 				s.logger.Warn("Failed to get staged file content", "path", filePath, "error", err)
 				// Continue with other files even if one fails
@@ -136,29 +155,54 @@ func (s *Service) getStagedDiff(repo *git.Repository) (*DiffResult, error) {
 }
 
 // getCommitDiff retrieves changes in a specific commit
-func (s *Service) getCommitDiff(repo *git.Repository, commitID string) (*DiffResult, error) {
+func (s *Service) getCommitDiff(commitID string) (*DiffResult, error) {
 	hash := plumbing.NewHash(commitID)
-	commit, err := repo.CommitObject(hash)
+	commit, err := s.repo.CommitObject(hash)
 	if err != nil {
 		return nil, fmt.Errorf("getting commit object: %w", err)
 	}
 
+	s.logger.Debug("Processing commit",
+		"hash", commitID,
+		"message", commit.Message,
+		"author", commit.Author.Name)
+
 	// Get the commit's parent
-	parentCommit, err := getParentCommit(commit)
+	parentCommit, err := s.getParentCommit(commit)
 	if err != nil {
 		return nil, fmt.Errorf("getting parent commit: %w", err)
 	}
 
+	if parentCommit != nil {
+		s.logger.Debug("Found parent commit",
+			"parent_hash", parentCommit.Hash.String(),
+			"parent_message", parentCommit.Message)
+	} else {
+		s.logger.Debug("No parent commit found - this is the initial commit")
+	}
+
 	// Get the diff between the commit and its parent
-	changes, err := getCommitChanges(commit, parentCommit)
+	changes, err := s.getCommitChanges(commit, parentCommit)
 	if err != nil {
 		return nil, fmt.Errorf("getting commit changes: %w", err)
 	}
 
+	s.logger.Debug("Retrieved commit changes", "changes_count", len(changes))
+
 	// Process the changes
-	files, err := processChanges(changes)
+	files, err := s.processChanges(changes)
 	if err != nil {
 		return nil, fmt.Errorf("processing changes: %w", err)
+	}
+
+	s.logger.Debug("Processed changed files", "files_count", len(files))
+	for _, file := range files {
+		s.logger.Debug("Changed file details",
+			"path", file.Path,
+			"old_path", file.OldPath,
+			"change_type", file.ChangeType,
+			"content_length", len(file.Content),
+			"patch_length", len(file.Patch))
 	}
 
 	// Create the commit info
@@ -176,51 +220,8 @@ func (s *Service) getCommitDiff(repo *git.Repository, commitID string) (*DiffRes
 	}, nil
 }
 
-// getBranchDiff retrieves changes between two branches
-func (s *Service) getBranchDiff(repo *git.Repository, branch1, branch2 string) (*DiffResult, error) {
-	// Get the reference for branch1
-	branch1Ref, err := repo.Reference(plumbing.NewBranchReferenceName(branch1), true)
-	if err != nil {
-		return nil, fmt.Errorf("getting reference for branch1: %w", err)
-	}
-
-	// Get the reference for branch2
-	branch2Ref, err := repo.Reference(plumbing.NewBranchReferenceName(branch2), true)
-	if err != nil {
-		return nil, fmt.Errorf("getting reference for branch2: %w", err)
-	}
-
-	// Get the commit object for branch1
-	branch1Commit, err := repo.CommitObject(branch1Ref.Hash())
-	if err != nil {
-		return nil, fmt.Errorf("getting commit for branch1: %w", err)
-	}
-
-	// Get the commit object for branch2
-	branch2Commit, err := repo.CommitObject(branch2Ref.Hash())
-	if err != nil {
-		return nil, fmt.Errorf("getting commit for branch2: %w", err)
-	}
-
-	// Get the changes between the two branches
-	changes, err := getBranchChanges(branch1Commit, branch2Commit)
-	if err != nil {
-		return nil, fmt.Errorf("getting branch changes: %w", err)
-	}
-
-	// Process the changes
-	files, err := processChanges(changes)
-	if err != nil {
-		return nil, fmt.Errorf("processing changes: %w", err)
-	}
-
-	return &DiffResult{
-		Files: files,
-	}, nil
-}
-
 // getParentCommit returns the parent commit of the given commit
-func getParentCommit(commit *object.Commit) (*object.Commit, error) {
+func (s *Service) getParentCommit(commit *object.Commit) (*object.Commit, error) {
 	if commit.NumParents() == 0 {
 		// For first commit, compare with empty tree
 		return nil, nil
@@ -234,33 +235,38 @@ func getParentCommit(commit *object.Commit) (*object.Commit, error) {
 	return parent, nil
 }
 
-// getCommitChanges returns the changes between a commit and its parent
-func getCommitChanges(commit, parentCommit *object.Commit) (object.Changes, error) {
+// getChangesFromEmptyTree gets changes by comparing an empty tree with the given commit
+func getChangesFromEmptyTree(commit *object.Commit) (object.Changes, error) {
+	commitTree, err := commit.Tree()
+	if err != nil {
+		return nil, fmt.Errorf("getting commit tree: %w", err)
+	}
+
+	// For initial commits, we want to diff empty -> commit (not commit -> empty)
+	// This makes "new files" appear as "Insert" rather than "Delete"
+	emptyTree := &object.Tree{}
+	changes, err := emptyTree.Diff(commitTree)
+	if err != nil {
+		return nil, fmt.Errorf("getting diff with empty tree: %w", err)
+	}
+
+	return changes, nil
+}
+
+// getCommitChanges retrieves the changes between a commit and its parent
+func (s *Service) getCommitChanges(commit, parentCommit *object.Commit) (object.Changes, error) {
 	var changes object.Changes
+	var err error
 
 	if parentCommit == nil {
-		// This is the first commit
-		commitTree, err := commit.Tree()
-		if err != nil {
-			return nil, fmt.Errorf("getting commit tree: %w", err)
-		}
-
-		slog.Debug("Handling initial commit",
-			"commit_hash", commit.Hash.String(),
-			"commit_message", commit.Message)
-
-		// For initial commits, we want to diff empty -> commit (not commit -> empty)
-		// This makes "new files" appear as "Insert" rather than "Delete"
-		emptyTree := &object.Tree{}
-		changes, err = emptyTree.Diff(commitTree)
-		if err != nil {
-			return nil, fmt.Errorf("getting diff with empty tree: %w", err)
-		}
+		// For first commit, compare with empty tree
+		changes, err = getChangesFromEmptyTree(commit)
+		s.logger.Debug("Getting changes from empty tree", "error", err)
 	} else {
 		// Get the trees for both commits
-		commitTree, err := commit.Tree()
+		currentTree, err := commit.Tree()
 		if err != nil {
-			return nil, fmt.Errorf("getting commit tree: %w", err)
+			return nil, fmt.Errorf("getting current tree: %w", err)
 		}
 
 		parentTree, err := parentCommit.Tree()
@@ -269,17 +275,75 @@ func getCommitChanges(commit, parentCommit *object.Commit) (object.Changes, erro
 		}
 
 		// Get the changes between the two trees
-		changes, err = parentTree.Diff(commitTree)
-		if err != nil {
-			return nil, fmt.Errorf("getting diff: %w", err)
-		}
+		changes, err = parentTree.Diff(currentTree)
+		s.logger.Debug("Getting changes between trees",
+			"current_tree", currentTree.Hash.String(),
+			"parent_tree", parentTree.Hash.String(),
+			"error", err)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("getting changes: %w", err)
+	}
+
+	// Log each change
+	for i, change := range changes {
+		s.logger.Debug("Found change",
+			"index", i,
+			"from", change.From.Name,
+			"to", change.To.Name,
+			"from_hash", change.From.TreeEntry.Hash.String(),
+			"to_hash", change.To.TreeEntry.Hash.String())
 	}
 
 	return changes, nil
 }
 
+// getBranchDiff retrieves changes between two branches
+func (s *Service) getBranchDiff(branch1, branch2 string) (*DiffResult, error) {
+	// Get the reference for branch1
+	branch1Ref, err := s.repo.Reference(plumbing.NewBranchReferenceName(branch1), true)
+	if err != nil {
+		return nil, fmt.Errorf("getting reference for branch1: %w", err)
+	}
+
+	// Get the reference for branch2
+	branch2Ref, err := s.repo.Reference(plumbing.NewBranchReferenceName(branch2), true)
+	if err != nil {
+		return nil, fmt.Errorf("getting reference for branch2: %w", err)
+	}
+
+	// Get the commit object for branch1
+	branch1Commit, err := s.repo.CommitObject(branch1Ref.Hash())
+	if err != nil {
+		return nil, fmt.Errorf("getting commit for branch1: %w", err)
+	}
+
+	// Get the commit object for branch2
+	branch2Commit, err := s.repo.CommitObject(branch2Ref.Hash())
+	if err != nil {
+		return nil, fmt.Errorf("getting commit for branch2: %w", err)
+	}
+
+	// Get the changes between the two branches
+	changes, err := s.getBranchChanges(branch1Commit, branch2Commit)
+	if err != nil {
+		return nil, fmt.Errorf("getting branch changes: %w", err)
+	}
+
+	// Process the changes
+	files, err := s.processChanges(changes)
+	if err != nil {
+		return nil, fmt.Errorf("processing changes: %w", err)
+	}
+
+	return &DiffResult{
+		Files: files,
+	}, nil
+}
+
 // getBranchChanges returns the changes between two branches
-func getBranchChanges(branch1Commit, branch2Commit *object.Commit) (object.Changes, error) {
+func (s *Service) getBranchChanges(branch1Commit, branch2Commit *object.Commit) (object.Changes, error) {
 	// Get the trees for both branches
 	branch1Tree, err := branch1Commit.Tree()
 	if err != nil {
@@ -301,121 +365,169 @@ func getBranchChanges(branch1Commit, branch2Commit *object.Commit) (object.Chang
 }
 
 // processChanges converts go-git Changes to our ChangedFile model
-func processChanges(changes object.Changes) ([]ChangedFile, error) {
+func (s *Service) processChanges(changes object.Changes) ([]ChangedFile, error) {
 	var files []ChangedFile
 
-	for _, change := range changes {
-		file, err := processChange(change)
+	s.logger.Debug("Starting to process changes", "total_changes", len(changes))
+
+	for i, change := range changes {
+		s.logger.Debug("Processing change",
+			"index", i,
+			"from_name", change.From.Name,
+			"to_name", change.To.Name)
+
+		file, err := s.processChange(change)
 		if err != nil {
-			// Log the error but continue processing other changes
-			slog.Warn("Failed to process change", "error", err)
+			s.logger.Error("Failed to process change",
+				"error", err,
+				"from_name", change.From.Name,
+				"to_name", change.To.Name)
 			continue
 		}
 
 		files = append(files, file)
+		s.logger.Debug("Successfully processed change",
+			"index", i,
+			"path", file.Path,
+			"old_path", file.OldPath,
+			"change_type", file.ChangeType)
 	}
 
 	return files, nil
 }
 
 // processChange converts a single go-git Change to our ChangedFile model
-func processChange(change *object.Change) (ChangedFile, error) {
-	var file ChangedFile
+func (s *Service) processChange(change *object.Change) (ChangedFile, error) {
+	var result ChangedFile
+	var err error
 
-	// Determine the change type
-	action, err := change.Action()
-	if err != nil {
-		return file, fmt.Errorf("determining change action: %w", err)
+	// Get the paths
+	fromName := ""
+	if change.From.Name != "" {
+		fromName = filepath.Clean(change.From.Name)
 	}
 
-	// Convert the action to a string for comparison
-	actionStr := action.String()
-
-	// For initial commits - reverse the order of the diff
-	// In initial commits, go-git reports files backward: empty tree to commit
-	// This makes new files appear as "Delete" operations
-	isInitialCommitNewFile := false
-
-	// If action is Delete but the To.Name exists and the To.Hash is not zero
-	// then this is actually a new file in an initial commit
-	if actionStr == "Delete" && change.To.Name != "" && !change.To.TreeEntry.Hash.IsZero() {
-		isInitialCommitNewFile = true
+	toName := ""
+	if change.To.Name != "" {
+		toName = filepath.Clean(change.To.Name)
 	}
 
-	if isInitialCommitNewFile {
-		// This is actually a new file in the first commit
-		file.ChangeType = ChangeTypeAdded
-		file.Path = change.To.Name
-	} else {
-		// Regular case - set the change type and path based on action
-		switch actionStr {
-		case "Insert":
-			file.ChangeType = ChangeTypeAdded
-			file.Path = change.To.Name
-		case "Delete":
-			file.ChangeType = ChangeTypeDeleted
-			file.Path = change.From.Name
-		case "Modify":
-			file.ChangeType = ChangeTypeModified
-			file.Path = change.To.Name
-		default:
-			// Handle renames and other changes
-			if change.From.Name != change.To.Name {
-				file.ChangeType = ChangeTypeRenamed
-				file.OldPath = change.From.Name
-				file.Path = change.To.Name
-			} else {
-				file.ChangeType = ChangeTypeModified
-				file.Path = change.To.Name
-			}
-		}
+	// Normalize the path we'll use
+	path := toName
+	if path == "" {
+		path = fromName
 	}
 
-	// Get the patch
+	s.logger.Debug("Normalized path",
+		"original", change.To.Name,
+		"cleaned", toName,
+		"normalized", path)
+
+	// Determine change type
+	changeType := getChangeTypeFromChange(change)
+	s.logger.Debug("Change type determined",
+		"path", path,
+		"old_path", fromName,
+		"change_type", changeType)
+
+	// Generate patch
 	patch, err := change.Patch()
 	if err != nil {
-		return file, fmt.Errorf("getting patch: %w", err)
+		return result, fmt.Errorf("generating patch: %w", err)
 	}
+	patchStr := patch.String()
+	s.logger.Debug("Generated patch",
+		"path", path,
+		"patch_length", len(patchStr))
 
-	// Convert patch to string
-	var buf bytes.Buffer
-	err = patch.Encode(&buf)
-	if err != nil {
-		return file, fmt.Errorf("encoding patch: %w", err)
-	}
-	file.Patch = buf.String()
+	// Get file content
+	s.logger.Debug("Attempting to get file content",
+		"path", path,
+		"is_initial_commit", change.From.Name == "",
+		"has_new_file", change.To.Name != "")
 
-	// Get the content for non-deleted files and initial commit files
-	if file.ChangeType != ChangeTypeDeleted || isInitialCommitNewFile {
-		// For initial commits, we need to get content from the To field
-		// even though the action might be "Delete"
-		if isInitialCommitNewFile || change.To.TreeEntry.Mode.IsFile() {
-			// Get the file from the tree
-			var treeFile *object.File
-			var fileErr error
-
-			if isInitialCommitNewFile {
-				// For initial commit, look in the To tree
-				treeFile, fileErr = change.To.Tree.File(change.To.Name)
-			} else {
-				treeFile, fileErr = change.To.Tree.File(change.To.Name)
-			}
-
-			if fileErr != nil {
-				return file, fmt.Errorf("getting file from tree: %w", fileErr)
-			}
-
-			// Get the content
-			content, fileErr := treeFile.Contents()
-			if fileErr != nil {
-				return file, fmt.Errorf("getting file contents: %w", fileErr)
-			}
-
-			file.Content = content
+	switch changeType {
+	case ChangeTypeAdded:
+		blob, err := s.repo.BlobObject(change.To.TreeEntry.Hash)
+		if err != nil {
+			return result, fmt.Errorf("getting blob for added file: %w", err)
 		}
+		reader, err := blob.Reader()
+		if err != nil {
+			return result, fmt.Errorf("getting reader for added file: %w", err)
+		}
+		defer reader.Close()
+
+		content, err := io.ReadAll(reader)
+		if err != nil {
+			return result, fmt.Errorf("reading added file content: %w", err)
+		}
+
+		result.Content = string(content)
+
+	case ChangeTypeDeleted:
+		blob, err := s.repo.BlobObject(change.From.TreeEntry.Hash)
+		if err != nil {
+			return result, fmt.Errorf("getting blob for deleted file: %w", err)
+		}
+		reader, err := blob.Reader()
+		if err != nil {
+			return result, fmt.Errorf("getting reader for deleted file: %w", err)
+		}
+		defer reader.Close()
+
+		content, err := io.ReadAll(reader)
+		if err != nil {
+			return result, fmt.Errorf("reading deleted file content: %w", err)
+		}
+
+		result.Content = string(content)
+
+	case ChangeTypeModified:
+		blob, err := s.repo.BlobObject(change.To.TreeEntry.Hash)
+		if err != nil {
+			return result, fmt.Errorf("getting blob for modified file: %w", err)
+		}
+		reader, err := blob.Reader()
+		if err != nil {
+			return result, fmt.Errorf("getting reader for modified file: %w", err)
+		}
+		defer reader.Close()
+
+		content, err := io.ReadAll(reader)
+		if err != nil {
+			return result, fmt.Errorf("reading modified file content: %w", err)
+		}
+
+		result.Content = string(content)
 	}
 
-	return file, nil
+	// Build the result
+	result = ChangedFile{
+		Path:       path,
+		OldPath:    fromName,
+		Content:    result.Content,
+		Patch:      patchStr,
+		ChangeType: changeType,
+	}
+
+	return result, nil
+}
+
+// getChangeTypeFromChange determines the type of change from a git object.Change
+func getChangeTypeFromChange(change *object.Change) ChangeType {
+	// If From is empty (zero hash) and To exists, it's an addition
+	if change.From.TreeEntry.Hash.IsZero() && !change.To.TreeEntry.Hash.IsZero() {
+		return ChangeTypeAdded
+	}
+
+	// If To is empty (zero hash) and From exists, it's a deletion
+	if !change.From.TreeEntry.Hash.IsZero() && change.To.TreeEntry.Hash.IsZero() {
+		return ChangeTypeDeleted
+	}
+
+	// Otherwise it's a modification
+	return ChangeTypeModified
 }
 
 // getStagedFileContent gets the content and patch for a staged file
@@ -535,15 +647,10 @@ func getChangeType(code git.StatusCode) ChangeType {
 }
 
 // ListBranches returns a list of all branches in the repository
-func (s *Service) ListBranches(repoPath string) ([]string, error) {
-	repo, err := git.PlainOpen(repoPath)
-	if err != nil {
-		return nil, fmt.Errorf("opening git repository: %w", err)
-	}
-
+func (s *Service) ListBranches() ([]string, error) {
 	branches := []string{}
 
-	branchIter, err := repo.Branches()
+	branchIter, err := s.repo.Branches()
 	if err != nil {
 		return nil, fmt.Errorf("getting branches: %w", err)
 	}
@@ -562,19 +669,14 @@ func (s *Service) ListBranches(repoPath string) ([]string, error) {
 }
 
 // ListCommits returns a list of commits in the repository
-func (s *Service) ListCommits(repoPath string, limit int) ([]*Commit, error) {
-	repo, err := git.PlainOpen(repoPath)
-	if err != nil {
-		return nil, fmt.Errorf("opening git repository: %w", err)
-	}
-
-	headRef, err := repo.Head()
+func (s *Service) ListCommits(limit int) ([]*Commit, error) {
+	headRef, err := s.repo.Head()
 	if err != nil {
 		return nil, fmt.Errorf("getting HEAD: %w", err)
 	}
 
 	// Get the HEAD commit
-	commit, err := repo.CommitObject(headRef.Hash())
+	commit, err := s.repo.CommitObject(headRef.Hash())
 	if err != nil {
 		return nil, fmt.Errorf("getting HEAD commit: %w", err)
 	}

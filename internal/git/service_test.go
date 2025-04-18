@@ -111,6 +111,10 @@ func TestGitService(t *testing.T) {
 		repoPath := setupTempGitRepo(t)
 		defer os.RemoveAll(repoPath)
 
+		// Initialize the repository in the service
+		err := service.InitRepo(repoPath)
+		require.NoError(t, err, "InitRepo should not return an error")
+
 		// Create a file
 		createFile(t, repoPath, "test.go", "package main\n\nfunc main() {\n\tprintln(\"Hello, World!\")\n}\n")
 
@@ -146,6 +150,10 @@ func TestGitService(t *testing.T) {
 		repoPath := setupTempGitRepo(t)
 		defer os.RemoveAll(repoPath)
 
+		// Initialize the repository in the service
+		err := service.InitRepo(repoPath)
+		require.NoError(t, err, "InitRepo should not return an error")
+
 		// Create and commit a file
 		createFile(t, repoPath, "test.go", "package main\n\nfunc main() {\n\tprintln(\"Hello, World!\")\n}\n")
 		stageFile(t, repoPath, "test.go")
@@ -178,7 +186,6 @@ func TestGitService(t *testing.T) {
 		assert.Equal(t, commitHash, diff.CommitInfo.Hash, "Commit hash should match")
 		assert.Equal(t, "Test User", diff.CommitInfo.Author, "Commit author should match")
 		assert.Equal(t, "test@example.com", diff.CommitInfo.Email, "Commit email should match")
-		// Trim the newline from the message as git adds it
 		assert.Equal(t, "Update message", strings.TrimSpace(diff.CommitInfo.Message), "Commit message should match")
 	})
 
@@ -186,6 +193,10 @@ func TestGitService(t *testing.T) {
 		// Set up a temporary Git repository
 		repoPath := setupTempGitRepo(t)
 		defer os.RemoveAll(repoPath)
+
+		// Initialize the repository in the service
+		err := service.InitRepo(repoPath)
+		require.NoError(t, err, "InitRepo should not return an error")
 
 		// Create a feature branch
 		createBranch(t, repoPath, "feature")
@@ -237,6 +248,10 @@ func TestGitService(t *testing.T) {
 		repoPath := setupTempGitRepo(t)
 		defer os.RemoveAll(repoPath)
 
+		// Initialize the repository in the service
+		err := service.InitRepo(repoPath)
+		require.NoError(t, err, "InitRepo should not return an error")
+
 		// Get the default branch name
 		mainBranch := getCurrentBranch(t, repoPath)
 
@@ -245,7 +260,7 @@ func TestGitService(t *testing.T) {
 		createBranch(t, repoPath, "feature2")
 
 		// List branches
-		branches, err := service.ListBranches(repoPath)
+		branches, err := service.ListBranches()
 		require.NoError(t, err, "ListBranches should not return an error")
 
 		// Verify branches
@@ -260,6 +275,10 @@ func TestGitService(t *testing.T) {
 		repoPath := setupTempGitRepo(t)
 		defer os.RemoveAll(repoPath)
 
+		// Initialize the repository in the service
+		err := service.InitRepo(repoPath)
+		require.NoError(t, err, "InitRepo should not return an error")
+
 		// Create and commit files
 		createFile(t, repoPath, "file1.go", "package main\n\nfunc file1() {}\n")
 		stageFile(t, repoPath, "file1.go")
@@ -273,7 +292,7 @@ func TestGitService(t *testing.T) {
 		commit2 := commitChanges(t, repoPath, "Add file2")
 
 		// List commits with limit
-		commits, err := service.ListCommits(repoPath, 2)
+		commits, err := service.ListCommits(2)
 		require.NoError(t, err, "ListCommits should not return an error")
 
 		// Verify commits
@@ -286,5 +305,25 @@ func TestGitService(t *testing.T) {
 
 		assert.Equal(t, commit1, commits[1].Hash, "Second commit hash should match the first commit")
 		assert.Equal(t, "Add file1", strings.TrimSpace(commits[1].Message), "Second commit message should match")
+	})
+
+	t.Run("InitRepo_NonExistentRepo", func(t *testing.T) {
+		// Try to initialize a non-existent repository
+		err := service.InitRepo("/path/that/does/not/exist")
+		assert.Error(t, err, "InitRepo should return an error for non-existent repository")
+	})
+
+	t.Run("InitRepo_MultipleInits", func(t *testing.T) {
+		// Set up a temporary Git repository
+		repoPath := setupTempGitRepo(t)
+		defer os.RemoveAll(repoPath)
+
+		// First initialization should succeed
+		err := service.InitRepo(repoPath)
+		assert.NoError(t, err, "First InitRepo should succeed")
+
+		// Second initialization of the same repo should succeed (idempotent)
+		err = service.InitRepo(repoPath)
+		assert.NoError(t, err, "Second InitRepo should succeed (idempotent)")
 	})
 }
