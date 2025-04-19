@@ -11,7 +11,7 @@ AUTHOR       := Ahmed ElSebaei
 EMAIL        := tildaslashalef@gmail.com
 
 # Version information
-VERSION      ?= $(shell git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.1")
+VERSION      ?= $(shell git fetch --tags --force > /dev/null 2>&1 && git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
 BUILD_TIME   := $(shell date -u '+%Y-%m-%d_%H:%M:%S')
 COMMIT_HASH  := $(shell git rev-parse HEAD)
 
