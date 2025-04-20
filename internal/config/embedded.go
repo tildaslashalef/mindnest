@@ -15,7 +15,7 @@ import (
 var configFS embed.FS
 
 // SetupConfigDirectory ensures the config directory exists and contains necessary files
-func SetupConfigDirectory(configDir string) error {
+func SetupConfigDirectory(configDir string, backupExisting bool) error {
 	// Ensure config directory exists
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return err
@@ -23,7 +23,7 @@ func SetupConfigDirectory(configDir string) error {
 
 	// Extract sample env file (with backup if it exists)
 	sampleEnvPath := filepath.Join(configDir, ".env")
-	if err := ExtractEmbeddedFile("env.sample", sampleEnvPath, true); err != nil {
+	if err := ExtractEmbeddedFile("env.sample", sampleEnvPath, backupExisting); err != nil {
 		loggy.Warn("Failed to extract sample env file", "error", err)
 		// Continue anyway, this is not critical
 	}

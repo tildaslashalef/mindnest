@@ -5,37 +5,52 @@ import (
 	"fmt"
 	"strings"
 
+	"golang.org/x/time/rate" // Import rate limiter
+
 	"github.com/tildaslashalef/mindnest/internal/claude"
 	"github.com/tildaslashalef/mindnest/internal/config"
+	"github.com/tildaslashalef/mindnest/internal/loggy"
 	"github.com/tildaslashalef/mindnest/internal/ollama"
 )
 
 // claudeClientAdapter adapts the Claude client to the LLM Client interface
 type claudeClientAdapter struct {
-	client *claude.Client
-	ollama *ollama.Client // Added for embedding support
-	config *config.Config
+	client        *claude.Client
+	ollama        *ollama.Client // Optional Ollama client for embeddings
+	config        *config.Config
+	limiter       *rate.Limiter // Added rate limiter for Claude API
+	ollamaLimiter *rate.Limiter // Added optional rate limiter for Ollama (when used for embeddings)
 }
 
 // newClaudeClientAdapter creates a new Claude client adapter
-func newClaudeClientAdapter(client *claude.Client, cfg *config.Config) *claudeClientAdapter {
+// Updated to accept limiter
+func newClaudeClientAdapter(client *claude.Client, cfg *config.Config, limiter *rate.Limiter) *claudeClientAdapter {
 	return &claudeClientAdapter{
-		client: client,
-		config: cfg,
+		client:  client,
+		config:  cfg,
+		limiter: limiter, // Store Claude limiter
 	}
 }
 
 // newClaudeClientAdapterWithOllama creates a new Claude client adapter with Ollama for embeddings
-func newClaudeClientAdapterWithOllama(client *claude.Client, ollamaClient *ollama.Client, cfg *config.Config) *claudeClientAdapter {
+// Updated to accept both Claude and Ollama limiters
+func newClaudeClientAdapterWithOllama(client *claude.Client, ollamaClient *ollama.Client, cfg *config.Config, claudeLimiter *rate.Limiter, ollamaLimiter *rate.Limiter) *claudeClientAdapter {
 	return &claudeClientAdapter{
-		client: client,
-		ollama: ollamaClient,
-		config: cfg,
+		client:        client,
+		ollama:        ollamaClient,
+		config:        cfg,
+		limiter:       claudeLimiter, // Store Claude limiter
+		ollamaLimiter: ollamaLimiter, // Store Ollama limiter
 	}
 }
 
 // GenerateChat implements the Client interface for Claude
 func (a *claudeClientAdapter) GenerateChat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
+	// Wait for Claude rate limiter
+	if err := a.limiter.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("claude rate limiter error: %w", err)
+	}
+
 	// Extract any system message from messages array
 	var claudeMessages []claude.Message
 	var systemMessage string
@@ -104,6 +119,13 @@ func (a *claudeClientAdapter) GenerateChat(ctx context.Context, req ChatRequest)
 
 // GenerateChatStream implements the Client interface for Claude
 func (a *claudeClientAdapter) GenerateChatStream(ctx context.Context, req ChatRequest) (<-chan ChatResponse, error) {
+	// Wait for Claude rate limiter BEFORE starting the goroutine
+	if err := a.limiter.Wait(ctx); err != nil {
+		responseChan := make(chan ChatResponse)
+		close(responseChan)
+		return responseChan, fmt.Errorf("claude rate limiter error: %w", err)
+	}
+
 	// Extract any system message from messages array
 	var claudeMessages []claude.Message
 	var systemMessage string
@@ -187,6 +209,16 @@ func (a *claudeClientAdapter) GenerateChatStream(ctx context.Context, req ChatRe
 func (a *claudeClientAdapter) GenerateEmbedding(ctx context.Context, req EmbeddingRequest) ([]float32, error) {
 	// Check if we should use Ollama for embeddings
 	if a.ollama != nil && a.config.Claude.EmbeddingModel == "ollama" {
+		// Wait for OLLAMA rate limiter if available
+		if a.ollamaLimiter != nil {
+			if err := a.ollamaLimiter.Wait(ctx); err != nil {
+				return nil, fmt.Errorf("ollama rate limiter error (via claude adapter): %w", err)
+			}
+		} else {
+			// Should not happen if configured correctly, but log a warning
+			loggy.Warn("Ollama client available for embeddings, but limiter is missing in claude adapter")
+		}
+
 		ollamaReq := ollama.EmbeddingRequest{
 			// Use Ollama's embedding model from config
 			Model: a.config.Ollama.EmbeddingModel,
@@ -218,13 +250,22 @@ func (a *claudeClientAdapter) GenerateEmbedding(ctx context.Context, req Embeddi
 	}
 
 	// Claude doesn't natively support embeddings
-	return nil, fmt.Errorf("claude does not support embeddings natively")
+	return nil, fmt.Errorf("claude does not support embeddings natively and ollama delegation is not configured/available")
 }
 
 // BatchEmbeddings implements the Client interface for Claude
 func (a *claudeClientAdapter) BatchEmbeddings(ctx context.Context, reqs []EmbeddingRequest) ([][]float32, error) {
 	// Check if we should use Ollama for embeddings
 	if a.ollama != nil && a.config.Claude.EmbeddingModel == "ollama" {
+		// Wait for OLLAMA rate limiter if available (applied ONCE before the batch)
+		if a.ollamaLimiter != nil {
+			if err := a.ollamaLimiter.Wait(ctx); err != nil {
+				return nil, fmt.Errorf("ollama rate limiter error (via claude adapter): %w", err)
+			}
+		} else {
+			loggy.Warn("Ollama client available for embeddings, but limiter is missing in claude adapter")
+		}
+
 		ollamaReqs := make([]ollama.EmbeddingRequest, len(reqs))
 		for i, req := range reqs {
 			ollamaReqs[i] = ollama.EmbeddingRequest{
@@ -251,15 +292,45 @@ func (a *claudeClientAdapter) BatchEmbeddings(ctx context.Context, reqs []Embedd
 		return embeddings, nil
 	}
 
-	// Claude doesn't natively support embeddings
-	return nil, fmt.Errorf("claude does not support embeddings natively")
+	return nil, fmt.Errorf("claude does not support embeddings natively and ollama delegation is not configured/available")
 }
 
 // GenerateCompletion implements the Client interface for Claude
+// Claude uses the Chat endpoint for completions, so rate limiting is handled by GenerateChat
 func (a *claudeClientAdapter) GenerateCompletion(ctx context.Context, req GenerateRequest) (*GenerateResponse, error) {
-	// Claude doesn't have a direct equivalent to the generate endpoint
-	// We could implement this by using the chat API, but for now we'll just return an error
-	return nil, fmt.Errorf("claude does not support the generate endpoint directly, use GenerateChat instead")
+	// Convert GenerateRequest to ChatRequest
+	chatReq := ChatRequest{
+		Model:       req.Model,
+		Messages:    convertPromptToMessages(req.Prompt, req.System), // Need helper
+		MaxTokens:   req.MaxTokens,
+		Temperature: req.Temperature,
+		Stream:      false,
+		Options:     req.Options,
+	}
+
+	// Call GenerateChat which includes rate limiting
+	chatResp, err := a.GenerateChat(ctx, chatReq)
+	if err != nil {
+		return nil, fmt.Errorf("claude completion (via chat) failed: %w", err)
+	}
+
+	// Convert ChatResponse back to GenerateResponse
+	return &GenerateResponse{
+		Content:   chatResp.Content,
+		Model:     chatResp.Model,
+		Completed: chatResp.Completed,
+		Error:     chatResp.Error,
+	}, nil
+}
+
+// Helper to convert prompt/system to messages array
+func convertPromptToMessages(prompt, system string) []Message {
+	var messages []Message
+	if system != "" {
+		messages = append(messages, Message{Role: "system", Content: system})
+	}
+	messages = append(messages, Message{Role: "user", Content: prompt})
+	return messages
 }
 
 // Helper to convert message format

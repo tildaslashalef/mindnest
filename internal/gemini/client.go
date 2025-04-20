@@ -10,9 +10,9 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	"github.com/tildaslashalef/mindnest/internal/config"
 	"github.com/tildaslashalef/mindnest/internal/loggy"
 )
 
@@ -24,7 +24,7 @@ type Client struct {
 	embeddingModel   string
 	apiVersion       string
 	embeddingVersion string
-	httpClient       *http.Client
+	httpMultiClient  *http.Client
 	maxRetries       int
 	defaultMaxTokens int
 	topP             *float64
@@ -32,29 +32,13 @@ type Client struct {
 	temperature      *float64
 }
 
-// Config configures the Gemini client
-type Config struct {
-	APIKey           string        // API key for authentication
-	BaseURL          string        // Base URL for Gemini API
-	DefaultModel     string        // Default model to use if not specified in request
-	EmbeddingModel   string        // Default embedding model to use
-	APIVersion       string        // API version for chat models (v1 or v1beta)
-	EmbeddingVersion string        // API version for embedding models (v1 or v1beta)
-	Timeout          time.Duration // HTTP client timeout
-	MaxRetries       int           // Maximum retries on retryable errors
-	DefaultMaxTokens int           // Default max tokens for generation
-	TopP             *float64      // Default top_p value
-	TopK             *int          // Default top_k value
-	Temperature      *float64      // Default temperature value
-}
-
 // NewClient creates a new Gemini client from config
-func NewClient(cfg Config) *Client {
+func NewClient(cfg config.GeminiConfig) *Client {
 	// Ensure baseURL doesn't end with a slash
 	baseURL := strings.TrimSuffix(cfg.BaseURL, "/")
 
 	// Set default model if not provided
-	defaultModel := cfg.DefaultModel
+	defaultModel := cfg.Model
 	if defaultModel == "" {
 		defaultModel = "gemini-2.5-pro-exp-03-25" // Updated to use the latest experimental model
 	}
@@ -66,7 +50,7 @@ func NewClient(cfg Config) *Client {
 	}
 
 	// Set default max tokens if not provided
-	defaultMaxTokens := cfg.DefaultMaxTokens
+	defaultMaxTokens := cfg.MaxTokens
 	if defaultMaxTokens <= 0 {
 		defaultMaxTokens = 4096
 	}
@@ -82,6 +66,20 @@ func NewClient(cfg Config) *Client {
 		embeddingVersion = "v1beta" // Default to v1beta for embedding models
 	}
 
+	// Create pointers for optional parameters only if they have valid values
+	var tempPtr, topPPtr *float64
+	var topKPtr *int
+
+	if cfg.Temperature > 0 {
+		tempPtr = &cfg.Temperature
+	}
+	if cfg.TopP > 0 {
+		topPPtr = &cfg.TopP
+	}
+	if cfg.TopK > 0 {
+		topKPtr = &cfg.TopK
+	}
+
 	return &Client{
 		apiKey:           cfg.APIKey,
 		baseURL:          baseURL,
@@ -89,12 +87,12 @@ func NewClient(cfg Config) *Client {
 		embeddingModel:   embeddingModel,
 		apiVersion:       apiVersion,
 		embeddingVersion: embeddingVersion,
-		httpClient:       &http.Client{Timeout: cfg.Timeout},
+		httpMultiClient:  &http.Client{Timeout: cfg.Timeout},
 		maxRetries:       cfg.MaxRetries,
 		defaultMaxTokens: defaultMaxTokens,
-		topP:             cfg.TopP,
-		topK:             cfg.TopK,
-		temperature:      cfg.Temperature,
+		topP:             topPPtr,
+		topK:             topKPtr,
+		temperature:      tempPtr,
 	}
 }
 
@@ -329,7 +327,7 @@ func (c *Client) makeRequest(ctx context.Context, method, path string, requestBo
 	var lastErr error
 	operation := func() error {
 		// Send the request
-		resp, err := c.httpClient.Do(req)
+		resp, err := c.httpMultiClient.Do(req)
 		if err != nil {
 			lastErr = fmt.Errorf("sending request: %w", err)
 			return lastErr
@@ -433,7 +431,7 @@ func (c *Client) handleStreamingRequest(ctx context.Context, req ChatRequest, re
 	loggy.Debug("Gemini streaming request headers", "headers", headers, "url_path", httpReq.URL.Path)
 
 	// Send request
-	resp, err := c.httpClient.Do(httpReq)
+	resp, err := c.httpMultiClient.Do(httpReq)
 	if err != nil {
 		return fmt.Errorf("sending request: %w", err)
 	}

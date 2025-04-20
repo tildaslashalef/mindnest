@@ -50,6 +50,7 @@ type Config struct {
 	Database           DatabaseConfig
 	Logging            LoggingConfig
 	Server             ServerConfig
+	configDir          string // Internal: Directory where config was loaded from
 }
 
 // RAGConfig represents retrieval-augmented generation configuration
@@ -120,6 +121,10 @@ type OllamaConfig struct {
 	// Generation parameters
 	MaxTokens   int     // Max tokens to generate for responses
 	Temperature float64 // Default temperature for generation
+
+	// Rate limiting
+	RequestsPerMinute int // Added for rate limiting
+	BurstLimit        int // Added for rate limiting
 }
 
 // ClaudeConfig holds Claude API configuration
@@ -148,6 +153,10 @@ type ClaudeConfig struct {
 	// Stop sequence settings
 	UseStopSequences bool     // Whether to use stop sequences
 	StopSequences    []string // Custom stop sequences
+
+	// Rate limiting
+	RequestsPerMinute int // Added for rate limiting
+	BurstLimit        int // Added for rate limiting
 }
 
 // GeminiConfig holds Gemini API configuration
@@ -173,6 +182,10 @@ type GeminiConfig struct {
 	Temperature float64 // Default temperature for Gemini
 	TopP        float64 // Top-p sampling parameter
 	TopK        int     // Top-k sampling parameter
+
+	// Rate limiting
+	RequestsPerMinute int // Added for rate limiting
+	BurstLimit        int // Added for rate limiting
 }
 
 // ServerConfig holds configuration for the sync server

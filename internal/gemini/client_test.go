@@ -9,25 +9,29 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/tildaslashalef/mindnest/internal/config"
 )
 
 func setupTestServer(t *testing.T, handler http.HandlerFunc) (*httptest.Server, *Client) {
 	server := httptest.NewServer(handler)
 
-	cfg := Config{
+	geminiCfg := config.GeminiConfig{
 		APIKey:           "test-key",
 		BaseURL:          server.URL,
-		DefaultModel:     "test-model",
+		Model:            "test-model",
 		EmbeddingModel:   "test-embedding-model",
 		APIVersion:       "v1",
 		EmbeddingVersion: "v1",
 		Timeout:          5 * time.Second,
 		MaxRetries:       1,
-		DefaultMaxTokens: 2048,
-		Temperature:      ptr(0.7),
+		MaxTokens:        2048,
+		Temperature:      0.7,
 	}
 
-	client := NewClient(cfg)
+	client := NewClient(geminiCfg)
+	require.NotNil(t, client, "Client should not be nil")
+	require.NotNil(t, client.httpMultiClient, "HTTP client should not be nil")
 	return server, client
 }
 
@@ -36,22 +40,22 @@ func ptr[T any](v T) *T {
 }
 
 func TestNewClient(t *testing.T) {
-	cfg := Config{
+	geminiCfg := config.GeminiConfig{
 		APIKey:           "test-key",
 		BaseURL:          "https://generativelanguage.googleapis.com",
-		DefaultModel:     "gemini-2.5-pro",
+		Model:            "gemini-2.5-pro",
 		EmbeddingModel:   "text-embedding-004",
 		APIVersion:       "v1beta",
 		EmbeddingVersion: "v1",
 		Timeout:          10 * time.Second,
 		MaxRetries:       3,
-		DefaultMaxTokens: 4096,
-		Temperature:      ptr(0.8),
-		TopP:             ptr(0.95),
-		TopK:             ptr(40),
+		MaxTokens:        4096,
+		Temperature:      0.8,
+		TopP:             0.95,
+		TopK:             40,
 	}
 
-	client := NewClient(cfg)
+	client := NewClient(geminiCfg)
 
 	assert.NotNil(t, client, "Client should not be nil")
 	assert.Equal(t, "test-key", client.apiKey, "API key should match")
@@ -62,10 +66,14 @@ func TestNewClient(t *testing.T) {
 	assert.Equal(t, "v1", client.embeddingVersion, "Embedding version should match")
 	assert.Equal(t, 3, client.maxRetries, "Max retries should match")
 	assert.Equal(t, 4096, client.defaultMaxTokens, "Default max tokens should match")
+	assert.NotNil(t, client.temperature, "Temperature pointer should not be nil")
 	assert.Equal(t, 0.8, *client.temperature, "Temperature should match")
+	assert.NotNil(t, client.topP, "TopP pointer should not be nil")
 	assert.Equal(t, 0.95, *client.topP, "Top P should match")
+	assert.NotNil(t, client.topK, "TopK pointer should not be nil")
 	assert.Equal(t, 40, *client.topK, "Top K should match")
-	assert.Equal(t, 10*time.Second, client.httpClient.Timeout, "Timeout should match")
+	assert.NotNil(t, client.httpMultiClient, "HTTP Client should not be nil")
+	assert.Equal(t, 10*time.Second, client.httpMultiClient.Timeout, "Timeout should match")
 }
 
 func TestGenerateChat(t *testing.T) {
@@ -251,16 +259,16 @@ func TestErrorHandling(t *testing.T) {
 	}))
 	defer server.Close()
 
-	cfg := Config{
+	geminiCfg := config.GeminiConfig{
 		APIKey:         "test-key",
 		BaseURL:        server.URL,
-		DefaultModel:   "test-model",
+		Model:          "test-model",
 		EmbeddingModel: "test-embedding-model",
 		Timeout:        5 * time.Second,
 		MaxRetries:     1,
 	}
 
-	client := NewClient(cfg)
+	client := NewClient(geminiCfg)
 
 	_, err := client.GenerateChat(context.Background(), ChatRequest{
 		Model:    "test-model",

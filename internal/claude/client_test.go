@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tildaslashalef/mindnest/internal/config"
 )
 
 // errorTransport is an http.RoundTripper that returns an error
@@ -24,17 +25,25 @@ func (t *errorTransport) RoundTrip(*http.Request) (*http.Response, error) {
 	return nil, t.err
 }
 
-func setupTestServer(_ *testing.T, handler http.HandlerFunc) (*httptest.Server, *Client) {
+func setupTestServer(t *testing.T, handler http.HandlerFunc) (*httptest.Server, *Client) {
 	server := httptest.NewServer(handler)
 
-	config := Config{
+	// Use config.ClaudeConfig
+	claudeConfig := config.ClaudeConfig{
 		APIKey:     "test-api-key",
 		BaseURL:    server.URL,
 		Timeout:    5 * time.Second,
 		MaxRetries: 1,
+		// Add other necessary fields with defaults if needed by tests
+		Model:      "claude-3-7-sonnet-20250219", // Explicitly set default model for consistency
+		MaxTokens:  4096,
+		APIVersion: "2023-06-01",
 	}
 
-	client := NewClient(config)
+	client := NewClient(claudeConfig)
+	// Assert client creation was successful and httpClient is not nil
+	require.NotNil(t, client, "Client should not be nil")
+	require.NotNil(t, client.httpMultiClient, "HTTP client should not be nil")
 	return server, client
 }
 
@@ -58,18 +67,19 @@ func TestNewClient(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			config := Config{
+			// Use config.ClaudeConfig
+			claudeConfig := config.ClaudeConfig{
 				APIKey:     "test-key",
 				BaseURL:    tc.baseURL,
 				Timeout:    10 * time.Second,
 				MaxRetries: 3,
 			}
 
-			client := NewClient(config)
+			client := NewClient(claudeConfig)
 			assert.Equal(t, tc.expectedBaseURL, client.baseURL)
 			assert.Equal(t, "test-key", client.apiKey)
 			assert.Equal(t, 3, client.maxRetries)
-			assert.NotNil(t, client.httpClient)
+			assert.NotNil(t, client.httpMultiClient) // Check renamed client field
 		})
 	}
 }
@@ -154,7 +164,8 @@ func TestGenerateChat(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.serverStatus == 0 {
 				// This is a client-side validation test, no need for a server
-				client := NewClient(Config{APIKey: "test-key", BaseURL: "https://api.example.com"})
+				// Use config.ClaudeConfig
+				client := NewClient(config.ClaudeConfig{APIKey: "test-key", BaseURL: "https://api.example.com"})
 				resp, err := client.GenerateChat(context.Background(), tc.request)
 
 				if tc.expectError {
@@ -282,7 +293,7 @@ func TestGenerateChatStream(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if len(tc.serverResponses) == 0 {
 				// This is a client-side validation test
-				client := NewClient(Config{APIKey: "test-key", BaseURL: "https://api.example.com"})
+				client := NewClient(config.ClaudeConfig{APIKey: "test-key", BaseURL: "https://api.example.com"})
 				stream, err := client.GenerateChatStream(context.Background(), tc.request)
 
 				if tc.expectError {
@@ -361,7 +372,7 @@ func TestGenerateChatStream(t *testing.T) {
 }
 
 func TestGenerateEmbedding(t *testing.T) {
-	client := NewClient(Config{APIKey: "test-key", BaseURL: "https://api.example.com"})
+	client := NewClient(config.ClaudeConfig{APIKey: "test-key", BaseURL: "https://api.example.com"})
 
 	// Claude doesn't support embeddings, so this should return an error
 	resp, err := client.GenerateEmbedding(context.Background(), EmbeddingRequest{
@@ -375,7 +386,7 @@ func TestGenerateEmbedding(t *testing.T) {
 }
 
 func TestBatchEmbeddings(t *testing.T) {
-	client := NewClient(Config{APIKey: "test-key", BaseURL: "https://api.example.com"})
+	client := NewClient(config.ClaudeConfig{APIKey: "test-key", BaseURL: "https://api.example.com"})
 
 	// Claude doesn't support embeddings, so this should return an error
 	resp, err := client.BatchEmbeddings(context.Background(), []EmbeddingRequest{
@@ -388,7 +399,7 @@ func TestBatchEmbeddings(t *testing.T) {
 }
 
 func TestHandleErrorResponse(t *testing.T) {
-	client := NewClient(Config{APIKey: "test-key", BaseURL: "https://api.example.com"})
+	client := NewClient(config.ClaudeConfig{APIKey: "test-key", BaseURL: "https://api.example.com"})
 
 	errorJSON := `{"type":"error","error":{"type":"authentication_error","message":"Invalid API key"}}`
 	errorJSONBytes := []byte(errorJSON)
@@ -503,7 +514,7 @@ func TestContextCancellation(t *testing.T) {
 }
 
 func TestNetworkError(t *testing.T) {
-	client := NewClient(Config{
+	client := NewClient(config.ClaudeConfig{
 		APIKey:     "test-key",
 		BaseURL:    "https://api.example.com",
 		Timeout:    5 * time.Second,
@@ -511,7 +522,7 @@ func TestNetworkError(t *testing.T) {
 	})
 
 	// Set a transport that returns network errors
-	client.httpClient.Transport = &errorTransport{
+	client.httpMultiClient.Transport = &errorTransport{
 		err: errors.New("network error"),
 	}
 

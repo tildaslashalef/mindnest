@@ -311,25 +311,24 @@ func performLLMReview(m Model) tea.Cmd {
 		}
 		loggy.Info("Created review object", "review_id", reviewObj.ID)
 
-		var reviewFiles []*review.ReviewFile
-		var allIssues []*review.Issue
-		filesReviewedCount := 0
-		// TODO: Consider parallelizing file reviews if safe and beneficial
-		for i, fileID := range fileIDs {
+		// 1. Pre-collect file data (File objects, contents, diffs)
+		filesToReview := make([]*File, 0, len(fileIDs))
+		fileContents := make(map[string]string)
+		fileDiffs := make(map[string]string)
+
+		for _, fileID := range fileIDs {
 			file, err := app.Workspace.GetFile(ctx, fileID)
 			if err != nil {
-				loggy.Warn("Failed to get file for LLM analysis", "file_id", fileID, "error", err)
+				loggy.Warn("Failed to get file for LLM analysis pre-collection", "file_id", fileID, "error", err)
 				continue // Skip this file
 			}
 			relPath, _ := filepath.Rel(workspace.Path, file.Path)
-			loggy.Debug("Reviewing file with LLM", "index", i+1, "of", len(fileIDs), "path", relPath)
 
 			contentBytes, err := os.ReadFile(file.Path)
 			if err != nil {
-				loggy.Warn("Failed to read file content for LLM analysis", "path", relPath, "error", err)
+				loggy.Warn("Failed to read file content for LLM analysis pre-collection", "path", relPath, "error", err)
 				continue // Skip this file
 			}
-			content := string(contentBytes)
 
 			// Prepare diff information string for context
 			var diffInfo string
@@ -344,34 +343,59 @@ func performLLMReview(m Model) tea.Cmd {
 				diffInfo = "Code changes"
 			}
 
-			// Call the review service for the individual file
-			reviewedFile, err := app.Review.ReviewFile(ctx, reviewObj.ID, file, content, diffInfo)
-			if err != nil {
-				// Log error but attempt to continue with other files
-				loggy.Warn("Failed to review file with LLM", "path", relPath, "error", err)
-				// Mark file as failed? The review service might already do this.
-				continue
-			}
+			filesToReview = append(filesToReview, file)
+			fileContents[file.ID] = string(contentBytes)
+			fileDiffs[file.ID] = diffInfo
+		}
 
-			filesReviewedCount++
-			reviewFiles = append(reviewFiles, reviewedFile)
-			loggy.Debug("LLM analysis complete for file", "path", relPath, "issues_found", reviewedFile.IssuesCount)
-
-			// Collect issues immediately after reviewing the file
-			if reviewedFile != nil && reviewedFile.IssuesCount > 0 {
-				issues, err := app.Review.GetIssuesByReviewFile(ctx, reviewedFile.ID)
-				if err != nil {
-					loggy.Warn("Failed to retrieve issues after review", "file_id", reviewedFile.ID, "path", relPath, "error", err)
-				} else {
-					allIssues = append(allIssues, issues...)
-					loggy.Debug("Collected issues for file", "path", relPath, "count", len(issues))
-				}
+		if len(filesToReview) == 0 {
+			loggy.Error("No files could be prepared for LLM review analysis after filtering.")
+			// Attempt to complete the review even if no files were processed by LLM
+			completedReview, _ := app.Review.CompleteReview(ctx, reviewObj.ID) // Ignore error here
+			return reviewResultMsg{
+				review:      completedReview,
+				reviewFiles: []*review.ReviewFile{},
+				issues:      []*review.Issue{},
+				error:       fmt.Errorf("no files could be prepared for review"),
 			}
 		}
 
-		loggy.Debug("LLM analysis finished for all applicable files", "reviewed_count", filesReviewedCount, "total_issues", len(allIssues))
+		loggy.Info("Starting concurrent LLM review analysis", "files_count", len(filesToReview))
 
-		// Complete the overall review process
+		// 2. Call ReviewFiles concurrently
+		reviewFiles, err := app.Review.ReviewFiles(ctx, reviewObj.ID, filesToReview, fileContents, fileDiffs)
+		if err != nil {
+			// ReviewFiles itself doesn't return errors in current impl, errors are logged per file.
+			// But handle defensively in case the signature changes.
+			loggy.Error("Error returned from ReviewFiles (unexpected)", "error", err)
+			// Continue processing with potentially partial results
+		}
+
+		loggy.Debug("Concurrent LLM analysis finished", "processed_file_count", len(reviewFiles))
+
+		// 3. Collect issues from the results
+		var allIssues []*review.Issue
+		for _, reviewedFile := range reviewFiles {
+			if reviewedFile != nil && reviewedFile.IssuesCount > 0 {
+				relPath := "<unknown>" // Placeholder path
+				// Attempt to get original file path for logging
+				origFile, pathErr := app.Workspace.GetFile(ctx, reviewedFile.FileID)
+				if pathErr == nil {
+					relPath, _ = filepath.Rel(workspace.Path, origFile.Path)
+				}
+
+				issues, err := app.Review.GetIssuesByReviewFile(ctx, reviewedFile.ID)
+				if err != nil {
+					loggy.Warn("Failed to retrieve issues after concurrent review", "review_file_id", reviewedFile.ID, "original_file_path", relPath, "error", err)
+				} else {
+					allIssues = append(allIssues, issues...)
+					loggy.Debug("Collected issues for reviewed file", "path", relPath, "count", len(issues))
+				}
+			}
+		}
+		loggy.Debug("Total issues collected after concurrent review", "count", len(allIssues))
+
+		// 4. Complete the overall review process
 		completedReview, err := app.Review.CompleteReview(ctx, reviewObj.ID)
 		if err != nil {
 			// Log the completion error, but still return results gathered so far
@@ -380,10 +404,10 @@ func performLLMReview(m Model) tea.Cmd {
 
 		loggy.Info("Code review process complete", "review_id", reviewObj.ID)
 
-		// Return all collected results
+		// 5. Return all collected results
 		return reviewResultMsg{ // Defined in messages.go
 			review:      completedReview, // May be nil if CompleteReview failed
-			reviewFiles: reviewFiles,
+			reviewFiles: reviewFiles,     // Results from ReviewFiles
 			issues:      allIssues,
 		}
 	}

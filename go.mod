@@ -25,6 +25,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli/v2 v2.27.6
 	golang.org/x/oauth2 v0.28.0
+	golang.org/x/time v0.11.0
 )
 
 require (

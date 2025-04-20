@@ -77,6 +77,8 @@ func LoadFromEnv(configDir string, configFilePath string, isInitializing bool) (
 		MaxIdleConns:        getEnvInt("MINDNEST_OLLAMA_MAX_IDLE_CONNS", 100),
 		MaxIdleConnsPerHost: getEnvInt("MINDNEST_OLLAMA_MAX_IDLE_CONNS_PER_HOST", 100),
 		IdleConnTimeout:     getEnvDuration("MINDNEST_OLLAMA_IDLE_CONN_TIMEOUT", 120*time.Second),
+		RequestsPerMinute:   getEnvInt("MINDNEST_OLLAMA_RPM", 10),
+		BurstLimit:          getEnvInt("MINDNEST_OLLAMA_BURST", 10),
 	}
 
 	// Load Claude config
@@ -90,37 +92,41 @@ func LoadFromEnv(configDir string, configFilePath string, isInitializing bool) (
 	}
 
 	cfg.Claude = ClaudeConfig{
-		APIKey:           getEnvString("MINDNEST_CLAUDE_API_KEY", ""),
-		BaseURL:          getEnvString("MINDNEST_CLAUDE_BASE_URL", "https://api.anthropic.com"),
-		Model:            getEnvString("MINDNEST_CLAUDE_MODEL", "claude-3-7-sonnet-20250219"),
-		EmbeddingModel:   getEnvString("MINDNEST_CLAUDE_EMBEDDING_MODEL", "ollama"),
-		Timeout:          getEnvDuration("MINDNEST_CLAUDE_TIMEOUT", 60*time.Second),
-		MaxRetries:       getEnvInt("MINDNEST_CLAUDE_MAX_RETRIES", 3),
-		MaxTokens:        getEnvInt("MINDNEST_CLAUDE_MAX_TOKENS", 4096),
-		Temperature:      getEnvFloat("MINDNEST_CLAUDE_TEMPERATURE", 0.1),
-		TopP:             getEnvFloat("MINDNEST_CLAUDE_TOP_P", 0.9),
-		TopK:             getEnvInt("MINDNEST_CLAUDE_TOP_K", 40),
-		APIVersion:       getEnvString("MINDNEST_CLAUDE_API_VERSION", "2023-06-01"),
-		UseAPIBeta:       getEnvBool("MINDNEST_CLAUDE_USE_API_BETA", false),
-		APIBeta:          apiBeta,
-		UseStopSequences: getEnvBool("MINDNEST_CLAUDE_USE_STOP_SEQUENCES", false),
-		StopSequences:    strings.Split(getEnvString("MINDNEST_CLAUDE_STOP_SEQUENCES", ""), ","),
+		APIKey:            getEnvString("MINDNEST_CLAUDE_API_KEY", ""),
+		BaseURL:           getEnvString("MINDNEST_CLAUDE_BASE_URL", "https://api.anthropic.com"),
+		Model:             getEnvString("MINDNEST_CLAUDE_MODEL", "claude-3-7-sonnet-20250219"),
+		EmbeddingModel:    getEnvString("MINDNEST_CLAUDE_EMBEDDING_MODEL", "ollama"),
+		Timeout:           getEnvDuration("MINDNEST_CLAUDE_TIMEOUT", 60*time.Second),
+		MaxRetries:        getEnvInt("MINDNEST_CLAUDE_MAX_RETRIES", 3),
+		MaxTokens:         getEnvInt("MINDNEST_CLAUDE_MAX_TOKENS", 4096),
+		Temperature:       getEnvFloat("MINDNEST_CLAUDE_TEMPERATURE", 0.1),
+		TopP:              getEnvFloat("MINDNEST_CLAUDE_TOP_P", 0.9),
+		TopK:              getEnvInt("MINDNEST_CLAUDE_TOP_K", 40),
+		APIVersion:        getEnvString("MINDNEST_CLAUDE_API_VERSION", "2023-06-01"),
+		UseAPIBeta:        getEnvBool("MINDNEST_CLAUDE_USE_API_BETA", false),
+		APIBeta:           apiBeta,
+		UseStopSequences:  getEnvBool("MINDNEST_CLAUDE_USE_STOP_SEQUENCES", false),
+		StopSequences:     strings.Split(getEnvString("MINDNEST_CLAUDE_STOP_SEQUENCES", ""), ","),
+		RequestsPerMinute: getEnvInt("MINDNEST_CLAUDE_RPM", 15),
+		BurstLimit:        getEnvInt("MINDNEST_CLAUDE_BURST", 15),
 	}
 
 	// Load Gemini configuration
 	cfg.Gemini = GeminiConfig{
-		APIKey:           getEnvString("MINDNEST_GEMINI_API_KEY", ""),
-		BaseURL:          getEnvString("MINDNEST_GEMINI_BASE_URL", "https://generativelanguage.googleapis.com"),
-		APIVersion:       getEnvString("MINDNEST_GEMINI_API_VERSION", "v1beta"),
-		EmbeddingVersion: getEnvString("MINDNEST_GEMINI_EMBEDDING_VERSION", "v1beta"),
-		Model:            getEnvString("MINDNEST_GEMINI_MODEL", "gemini-2.5-pro-exp-03-25"),
-		EmbeddingModel:   getEnvString("MINDNEST_GEMINI_EMBEDDING_MODEL", "gemini-embedding-exp-03-07"),
-		Timeout:          getEnvDuration("MINDNEST_GEMINI_TIMEOUT", 60*time.Second),
-		MaxRetries:       getEnvInt("MINDNEST_GEMINI_MAX_RETRIES", 3),
-		MaxTokens:        getEnvInt("MINDNEST_GEMINI_MAX_TOKENS", 4096),
-		Temperature:      getEnvFloat("MINDNEST_GEMINI_TEMPERATURE", 0.1),
-		TopP:             getEnvFloat("MINDNEST_GEMINI_TOP_P", 0.9),
-		TopK:             getEnvInt("MINDNEST_GEMINI_TOP_K", 40),
+		APIKey:            getEnvString("MINDNEST_GEMINI_API_KEY", ""),
+		BaseURL:           getEnvString("MINDNEST_GEMINI_BASE_URL", "https://generativelanguage.googleapis.com"),
+		APIVersion:        getEnvString("MINDNEST_GEMINI_API_VERSION", "v1beta"),
+		EmbeddingVersion:  getEnvString("MINDNEST_GEMINI_EMBEDDING_VERSION", "v1beta"),
+		Model:             getEnvString("MINDNEST_GEMINI_MODEL", "gemini-2.5-pro-exp-03-25"),
+		EmbeddingModel:    getEnvString("MINDNEST_GEMINI_EMBEDDING_MODEL", "gemini-embedding-exp-03-07"),
+		Timeout:           getEnvDuration("MINDNEST_GEMINI_TIMEOUT", 60*time.Second),
+		MaxRetries:        getEnvInt("MINDNEST_GEMINI_MAX_RETRIES", 3),
+		MaxTokens:         getEnvInt("MINDNEST_GEMINI_MAX_TOKENS", 4096),
+		Temperature:       getEnvFloat("MINDNEST_GEMINI_TEMPERATURE", 0.1),
+		TopP:              getEnvFloat("MINDNEST_GEMINI_TOP_P", 0.9),
+		TopK:              getEnvInt("MINDNEST_GEMINI_TOP_K", 40),
+		RequestsPerMinute: getEnvInt("MINDNEST_GEMINI_RPM", 15),
+		BurstLimit:        getEnvInt("MINDNEST_GEMINI_BURST", 15),
 	}
 
 	// RAG Configuration (formerly Embedding config)

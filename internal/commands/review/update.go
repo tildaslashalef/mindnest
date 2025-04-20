@@ -31,7 +31,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.Width = msg.Width
 		m.viewport.Height = msg.Height - verticalPadding
 		m.ready = true // Mark viewport as ready
-		loggy.Debug("Window resized", "width", m.width, "height", m.height, "viewport_height", m.viewport.Height)
 		// Update content if viewing review, as width might change rendering
 		if m.status == StatusViewingReview {
 			m.viewport.SetContent(m.renderReviewContent()) // Use helper from view.go
@@ -51,7 +50,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, Keys.Help):
 			m.showHelp = !m.showHelp
-			loggy.Debug("Toggled help visibility", "show", m.showHelp)
 			return m, nil
 
 		// Keys specific to StatusReady
@@ -68,7 +66,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.currentIssueID = (m.currentIssueID + 1) % len(m.issues)
 				m.viewport.SetContent(m.renderReviewContent()) // Update viewport content
 				m.viewport.GotoTop()                           // Reset scroll position
-				loggy.Debug("Navigated to next issue", "index", m.currentIssueID)
 			}
 			return m, nil
 
@@ -77,7 +74,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.currentIssueID = (m.currentIssueID - 1 + len(m.issues)) % len(m.issues)
 				m.viewport.SetContent(m.renderReviewContent()) // Update viewport content
 				m.viewport.GotoTop()                           // Reset scroll position
-				loggy.Debug("Navigated to previous issue", "index", m.currentIssueID)
 			}
 			return m, nil
 
@@ -104,7 +100,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// --- Custom Message Handling ---
 	case statusChangeMsg:
-		loggy.Debug("Received status change message", "new_status", msg.newStatus, "error", msg.error)
 		m.status = msg.newStatus
 		if msg.error != nil {
 			m.status = StatusError
@@ -118,7 +113,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil                                       // Usually no command needed when just changing status display
 
 	case workspaceMsg:
-		loggy.Debug("Received workspace message", "error", msg.error)
 		if msg.error != nil {
 			m.status = StatusError
 			m.errorMsg = msg.error.Error()
@@ -132,7 +126,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case reviewSetupMsg:
-		loggy.Debug("Received review setup message", "files_count", msg.totalFiles)
 		m.fileIDs = msg.fileIDs
 		m.filesToProcess = msg.filesToProcess
 		m.totalFiles = msg.totalFiles
@@ -188,10 +181,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case embedGenerationMsg:
-		// This message primarily triggers the *command* in commands.go.
-		// The command function itself handles the async work.
-		// We might update status here if needed before command starts.
-		loggy.Debug("Embed generation command triggered")
 		m.status = StatusGeneratingEmbeddings
 		m.statusMessage = fmt.Sprintf("Generating embeddings for %d chunks...", len(m.allChunks))
 		cmds = append(cmds, m.spinner.Tick) // Ensure spinner continues
@@ -210,7 +199,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case reviewResultMsg:
-		loggy.Debug("Received review result message", "error", msg.error)
 		if msg.error != nil {
 			m.status = StatusError
 			m.errorMsg = msg.error.Error()
@@ -234,7 +222,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case issueAcceptedMsg:
-		loggy.Debug("Received issue accepted message", "issue_id", msg.issueID, "success", msg.success, "error", msg.error)
 		if msg.success {
 			// Find the issue in the model and update its status
 			found := false

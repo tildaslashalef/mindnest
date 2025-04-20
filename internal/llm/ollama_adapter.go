@@ -4,26 +4,36 @@ import (
 	"context"
 	"fmt"
 
+	"golang.org/x/time/rate" // Import rate limiter
+
 	"github.com/tildaslashalef/mindnest/internal/config"
 	"github.com/tildaslashalef/mindnest/internal/ollama"
 )
 
 // ollamaClientAdapter adapts the Ollama client to the LLM Client interface
 type ollamaClientAdapter struct {
-	client *ollama.Client
-	config *config.Config
+	client  *ollama.Client
+	config  *config.Config
+	limiter *rate.Limiter // Added rate limiter
 }
 
 // newOllamaClientAdapter creates a new Ollama client adapter
-func newOllamaClientAdapter(client *ollama.Client, cfg *config.Config) *ollamaClientAdapter {
+// Updated to accept limiter
+func newOllamaClientAdapter(client *ollama.Client, cfg *config.Config, limiter *rate.Limiter) *ollamaClientAdapter {
 	return &ollamaClientAdapter{
-		client: client,
-		config: cfg,
+		client:  client,
+		config:  cfg,
+		limiter: limiter, // Store limiter
 	}
 }
 
 // GenerateChat implements the Client interface for Ollama
 func (a *ollamaClientAdapter) GenerateChat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
+	// Wait for rate limiter
+	if err := a.limiter.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("rate limiter error: %w", err)
+	}
+
 	// Create base request
 	ollamaReq := ollama.ChatRequest{
 		Model:    req.Model,
@@ -103,6 +113,14 @@ func (a *ollamaClientAdapter) GenerateChat(ctx context.Context, req ChatRequest)
 
 // GenerateChatStream implements the Client interface for Ollama
 func (a *ollamaClientAdapter) GenerateChatStream(ctx context.Context, req ChatRequest) (<-chan ChatResponse, error) {
+	// Wait for rate limiter BEFORE starting the goroutine
+	if err := a.limiter.Wait(ctx); err != nil {
+		// Create and close an empty channel to fulfill the return type on error
+		responseChan := make(chan ChatResponse)
+		close(responseChan)
+		return responseChan, fmt.Errorf("rate limiter error: %w", err)
+	}
+
 	// Convert to Ollama request
 	ollamaReq := ollama.ChatRequest{
 		Model:    req.Model,
@@ -192,6 +210,11 @@ func (a *ollamaClientAdapter) GenerateChatStream(ctx context.Context, req ChatRe
 
 // GenerateEmbedding implements the Client interface for Ollama
 func (a *ollamaClientAdapter) GenerateEmbedding(ctx context.Context, req EmbeddingRequest) ([]float32, error) {
+	// Wait for rate limiter
+	if err := a.limiter.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("rate limiter error: %w", err)
+	}
+
 	ollamaReq := ollama.EmbeddingRequest{
 		// Always use the embedding model from config
 		Model: a.config.Ollama.EmbeddingModel,
@@ -224,6 +247,14 @@ func (a *ollamaClientAdapter) GenerateEmbedding(ctx context.Context, req Embeddi
 
 // BatchEmbeddings implements the Client interface for Ollama
 func (a *ollamaClientAdapter) BatchEmbeddings(ctx context.Context, reqs []EmbeddingRequest) ([][]float32, error) {
+	// Important: Apply rate limit *before* calling the underlying BatchEmbeddings,
+	// which might make multiple internal calls or one large call.
+	// If the underlying client makes sequential calls, we might want to limit *inside* the loop instead.
+	// Assuming a.client.BatchEmbeddings makes one logical API call (even if implemented sequentially client-side).
+	if err := a.limiter.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("rate limiter error: %w", err)
+	}
+
 	ollamaReqs := make([]ollama.EmbeddingRequest, len(reqs))
 	for i, req := range reqs {
 		ollamaReqs[i] = ollama.EmbeddingRequest{
@@ -252,6 +283,11 @@ func (a *ollamaClientAdapter) BatchEmbeddings(ctx context.Context, reqs []Embedd
 
 // GenerateCompletion implements the Client interface for Ollama
 func (a *ollamaClientAdapter) GenerateCompletion(ctx context.Context, req GenerateRequest) (*GenerateResponse, error) {
+	// Wait for rate limiter
+	if err := a.limiter.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("rate limiter error: %w", err)
+	}
+
 	// Convert to Ollama request
 	ollamaReq := ollama.GenerateRequest{
 		Model:  req.Model,

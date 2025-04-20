@@ -4,37 +4,52 @@ import (
 	"context"
 	"fmt"
 
+	"golang.org/x/time/rate" // Import rate limiter
+
 	"github.com/tildaslashalef/mindnest/internal/config"
 	"github.com/tildaslashalef/mindnest/internal/gemini"
+	"github.com/tildaslashalef/mindnest/internal/loggy"
 	"github.com/tildaslashalef/mindnest/internal/ollama"
 )
 
 // geminiClientAdapter adapts the Gemini client to the LLM Client interface
 type geminiClientAdapter struct {
-	client *gemini.Client
-	ollama *ollama.Client // Added for alternative embedding support
-	config *config.Config
+	client        *gemini.Client
+	ollama        *ollama.Client // Added for alternative embedding support
+	config        *config.Config
+	limiter       *rate.Limiter // Added rate limiter for Gemini API
+	ollamaLimiter *rate.Limiter // Added optional rate limiter for Ollama (when used for embeddings)
 }
 
 // newGeminiClientAdapter creates a new Gemini client adapter
-func newGeminiClientAdapter(client *gemini.Client, cfg *config.Config) *geminiClientAdapter {
+// Updated to accept limiter
+func newGeminiClientAdapter(client *gemini.Client, cfg *config.Config, limiter *rate.Limiter) *geminiClientAdapter {
 	return &geminiClientAdapter{
-		client: client,
-		config: cfg,
+		client:  client,
+		config:  cfg,
+		limiter: limiter, // Store Gemini limiter
 	}
 }
 
 // newGeminiClientAdapterWithOllama creates a new Gemini client adapter with Ollama for embeddings
-func newGeminiClientAdapterWithOllama(geminiClient *gemini.Client, ollamaClient *ollama.Client, cfg *config.Config) *geminiClientAdapter {
+// Updated to accept both Gemini and Ollama limiters
+func newGeminiClientAdapterWithOllama(geminiClient *gemini.Client, ollamaClient *ollama.Client, cfg *config.Config, geminiLimiter *rate.Limiter, ollamaLimiter *rate.Limiter) *geminiClientAdapter {
 	return &geminiClientAdapter{
-		client: geminiClient,
-		ollama: ollamaClient,
-		config: cfg,
+		client:        geminiClient,
+		ollama:        ollamaClient,
+		config:        cfg,
+		limiter:       geminiLimiter, // Store Gemini limiter
+		ollamaLimiter: ollamaLimiter, // Store Ollama limiter
 	}
 }
 
 // GenerateChat implements the Client interface for Gemini
 func (a *geminiClientAdapter) GenerateChat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
+	// Wait for Gemini rate limiter
+	if err := a.limiter.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("gemini rate limiter error: %w", err)
+	}
+
 	// Convert llm.Message to gemini.Content
 	contents := make([]gemini.Content, len(req.Messages))
 	for i, msg := range req.Messages {
@@ -92,6 +107,13 @@ func (a *geminiClientAdapter) GenerateChat(ctx context.Context, req ChatRequest)
 
 // GenerateChatStream implements the Client interface for Gemini
 func (a *geminiClientAdapter) GenerateChatStream(ctx context.Context, req ChatRequest) (<-chan ChatResponse, error) {
+	// Wait for Gemini rate limiter BEFORE starting the goroutine
+	if err := a.limiter.Wait(ctx); err != nil {
+		responseChan := make(chan ChatResponse)
+		close(responseChan)
+		return responseChan, fmt.Errorf("gemini rate limiter error: %w", err)
+	}
+
 	// Convert llm.Message to gemini.Content
 	contents := make([]gemini.Content, len(req.Messages))
 	for i, msg := range req.Messages {
@@ -160,6 +182,11 @@ func (a *geminiClientAdapter) GenerateChatStream(ctx context.Context, req ChatRe
 
 // GenerateCompletion implements the Client interface for Gemini
 func (a *geminiClientAdapter) GenerateCompletion(ctx context.Context, req GenerateRequest) (*GenerateResponse, error) {
+	// Wait for Gemini rate limiter
+	if err := a.limiter.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("gemini rate limiter error: %w", err)
+	}
+
 	// Create content from prompt
 	contents := []gemini.Content{
 		{
@@ -230,6 +257,15 @@ func (a *geminiClientAdapter) GenerateCompletion(ctx context.Context, req Genera
 func (a *geminiClientAdapter) GenerateEmbedding(ctx context.Context, req EmbeddingRequest) ([]float32, error) {
 	// Check if we should use Ollama for embeddings
 	if a.ollama != nil && a.config.Gemini.EmbeddingModel == "ollama" {
+		// Wait for OLLAMA rate limiter if available
+		if a.ollamaLimiter != nil {
+			if err := a.ollamaLimiter.Wait(ctx); err != nil {
+				return nil, fmt.Errorf("ollama rate limiter error (via gemini adapter): %w", err)
+			}
+		} else {
+			loggy.Warn("Ollama client available for embeddings, but limiter is missing in gemini adapter")
+		}
+
 		ollamaReq := ollama.EmbeddingRequest{
 			// Use Ollama's embedding model from config
 			Model: a.config.Ollama.EmbeddingModel,
@@ -260,16 +296,23 @@ func (a *geminiClientAdapter) GenerateEmbedding(ctx context.Context, req Embeddi
 		return nil, fmt.Errorf("empty embedding response")
 	}
 
-	// Otherwise use Gemini's embedding
+	// Use Gemini's native embedding endpoint
+	// Wait for Gemini rate limiter
+	if err := a.limiter.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("gemini rate limiter error: %w", err)
+	}
+
+	// Prepare request for Gemini embedding endpoint
 	geminiReq := gemini.EmbeddingRequest{
-		// Always use the embedding model from config
+		// Use configured Gemini embedding model
 		Model: a.config.Gemini.EmbeddingModel,
 		Text:  req.Text,
 	}
 
+	// Call the underlying Gemini client's embedding function
 	resp, err := a.client.GenerateEmbedding(ctx, geminiReq)
 	if err != nil {
-		return nil, fmt.Errorf("gemini embedding failed: %w", err)
+		return nil, fmt.Errorf("gemini embedding generation failed: %w", err)
 	}
 
 	return resp.Embedding, nil
@@ -279,6 +322,15 @@ func (a *geminiClientAdapter) GenerateEmbedding(ctx context.Context, req Embeddi
 func (a *geminiClientAdapter) BatchEmbeddings(ctx context.Context, reqs []EmbeddingRequest) ([][]float32, error) {
 	// Check if we should use Ollama for embeddings
 	if a.ollama != nil && a.config.Gemini.EmbeddingModel == "ollama" {
+		// Wait for OLLAMA rate limiter if available (applied ONCE before the batch)
+		if a.ollamaLimiter != nil {
+			if err := a.ollamaLimiter.Wait(ctx); err != nil {
+				return nil, fmt.Errorf("ollama rate limiter error (via gemini adapter): %w", err)
+			}
+		} else {
+			loggy.Warn("Ollama client available for embeddings, but limiter is missing in gemini adapter")
+		}
+
 		ollamaReqs := make([]ollama.EmbeddingRequest, len(reqs))
 		for i, req := range reqs {
 			ollamaReqs[i] = ollama.EmbeddingRequest{
@@ -305,26 +357,25 @@ func (a *geminiClientAdapter) BatchEmbeddings(ctx context.Context, reqs []Embedd
 		return embeddings, nil
 	}
 
-	// Otherwise use Gemini's embedding
-	// Convert requests
-	geminiReqs := make([]gemini.EmbeddingRequest, len(reqs))
+	// Use Gemini's native embedding (sequentially with rate limiting for each)
+	embeddings := make([][]float32, len(reqs))
 	for i, req := range reqs {
-		geminiReqs[i] = gemini.EmbeddingRequest{
-			// Always use the embedding model from config
+		// Wait for Gemini rate limiter for EACH request in the batch
+		if err := a.limiter.Wait(ctx); err != nil {
+			// Return partial results along with the error
+			return embeddings[:i], fmt.Errorf("gemini rate limiter error during batch at index %d: %w", i, err)
+		}
+
+		geminiReq := gemini.EmbeddingRequest{
 			Model: a.config.Gemini.EmbeddingModel,
 			Text:  req.Text,
 		}
-	}
 
-	// Make the batch request
-	resps, err := a.client.BatchEmbeddings(ctx, geminiReqs)
-	if err != nil {
-		return nil, fmt.Errorf("gemini batch embeddings failed: %w", err)
-	}
-
-	// Convert responses
-	embeddings := make([][]float32, len(resps))
-	for i, resp := range resps {
+		resp, err := a.client.GenerateEmbedding(ctx, geminiReq)
+		if err != nil {
+			// Return partial results along with the error
+			return embeddings[:i], fmt.Errorf("gemini embedding failed during batch at index %d: %w", i, err)
+		}
 		embeddings[i] = resp.Embedding
 	}
 

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"golang.org/x/time/rate" // Import the rate limiting package
+
 	"github.com/tildaslashalef/mindnest/internal/claude"
 	"github.com/tildaslashalef/mindnest/internal/config"
 	"github.com/tildaslashalef/mindnest/internal/gemini"
@@ -108,6 +110,27 @@ type Factory struct {
 	claude *claude.Client
 	gemini *gemini.Client
 	logger *loggy.Logger
+
+	// Add rate limiters
+	ollamaLimiter *rate.Limiter
+	claudeLimiter *rate.Limiter
+	geminiLimiter *rate.Limiter
+}
+
+// helper function to create a rate limiter from RPM and Burst
+func newLimiter(rpm, burst int) *rate.Limiter {
+	if rpm <= 0 {
+		// If RPM is zero or negative, allow infinite rate (no limiting)
+		return rate.NewLimiter(rate.Inf, burst)
+	}
+	// Calculate rate per second
+	r := rate.Limit(float64(rpm) / 60.0)
+	// Burst should be at least 1
+	b := burst
+	if b <= 0 {
+		b = 1
+	}
+	return rate.NewLimiter(r, b)
 }
 
 // NewFactory creates a new LLM client factory
@@ -117,93 +140,29 @@ func NewFactory(cfg *config.Config, logger *loggy.Logger) *Factory {
 		logger: logger,
 	}
 
-	// Initialize Ollama client if configured
+	// Initialize Ollama client and limiter if configured
 	if cfg.Ollama.Endpoint != "" {
 		f.ollama = ollama.NewClient(cfg.Ollama)
-		loggy.Info("initialized Ollama client", "endpoint", cfg.Ollama.Endpoint)
+		f.ollamaLimiter = newLimiter(cfg.Ollama.RequestsPerMinute, cfg.Ollama.BurstLimit)
+		loggy.Info("initialized Ollama client", "endpoint", cfg.Ollama.Endpoint, "rpm", cfg.Ollama.RequestsPerMinute, "burst", cfg.Ollama.BurstLimit)
 	}
 
-	// Initialize Claude client if configured
+	// Initialize Claude client and limiter if configured
 	if cfg.Claude.APIKey != "" {
-		// Create top-p, top-k, and temperature pointers as needed
-		var topP, temperature *float64
-		var topK *int
-
-		if cfg.Claude.TopP > 0 {
-			topP = &cfg.Claude.TopP
-		}
-
-		if cfg.Claude.TopK > 0 {
-			topK = &cfg.Claude.TopK
-		}
-
-		if cfg.Claude.Temperature > 0 {
-			temperature = &cfg.Claude.Temperature
-		}
-
-		// Filter out empty API beta strings
-		var apiBeta []string
-		for _, beta := range cfg.Claude.APIBeta {
-			if beta != "" {
-				apiBeta = append(apiBeta, beta)
-			}
-		}
-
-		f.claude = claude.NewClient(claude.Config{
-			APIKey:           cfg.Claude.APIKey,
-			BaseURL:          cfg.Claude.BaseURL,
-			DefaultModel:     cfg.Claude.Model,
-			Timeout:          cfg.Claude.Timeout,
-			MaxRetries:       cfg.Claude.MaxRetries,
-			DefaultMaxTokens: cfg.Claude.MaxTokens,
-			APIVersion:       cfg.Claude.APIVersion,
-			UseAPIBeta:       cfg.Claude.UseAPIBeta,
-			APIBeta:          apiBeta,
-			TopP:             topP,
-			TopK:             topK,
-			Temperature:      temperature,
-		})
-		loggy.Info("initialized Claude client", "base_url", cfg.Claude.BaseURL, "model", cfg.Claude.Model)
+		f.claude = claude.NewClient(cfg.Claude)
+		f.claudeLimiter = newLimiter(cfg.Claude.RequestsPerMinute, cfg.Claude.BurstLimit)
+		loggy.Info("initialized Claude client", "base_url", cfg.Claude.BaseURL, "model", cfg.Claude.Model, "rpm", cfg.Claude.RequestsPerMinute, "burst", cfg.Claude.BurstLimit)
 	}
 
-	// Initialize Gemini client if configured
+	// Initialize Gemini client and limiter if configured
 	if cfg.Gemini.APIKey != "" {
-		// Create top-p, top-k, and temperature pointers as needed
-		var topP, temperature *float64
-		var topK *int
-
-		if cfg.Gemini.TopP > 0 {
-			topP = &cfg.Gemini.TopP
-		}
-
-		if cfg.Gemini.TopK > 0 {
-			topK = &cfg.Gemini.TopK
-		}
-
-		if cfg.Gemini.Temperature > 0 {
-			temperature = &cfg.Gemini.Temperature
-		}
-
-		f.gemini = gemini.NewClient(gemini.Config{
-			APIKey:           cfg.Gemini.APIKey,
-			BaseURL:          cfg.Gemini.BaseURL,
-			DefaultModel:     cfg.Gemini.Model,
-			EmbeddingModel:   cfg.Gemini.EmbeddingModel,
-			APIVersion:       cfg.Gemini.APIVersion,
-			EmbeddingVersion: cfg.Gemini.EmbeddingVersion,
-			Timeout:          cfg.Gemini.Timeout,
-			MaxRetries:       cfg.Gemini.MaxRetries,
-			DefaultMaxTokens: cfg.Gemini.MaxTokens,
-			TopP:             topP,
-			TopK:             topK,
-			Temperature:      temperature,
-		})
+		f.gemini = gemini.NewClient(cfg.Gemini)
+		f.geminiLimiter = newLimiter(cfg.Gemini.RequestsPerMinute, cfg.Gemini.BurstLimit)
 		loggy.Info("initialized Gemini client",
 			"base_url", cfg.Gemini.BaseURL,
 			"model", cfg.Gemini.Model,
-			"embedding_model", cfg.Gemini.EmbeddingModel,
-			"api_version", cfg.Gemini.APIVersion,
-			"embedding_version", cfg.Gemini.EmbeddingVersion)
+			"rpm", cfg.Gemini.RequestsPerMinute,
+			"burst", cfg.Gemini.BurstLimit)
 	}
 
 	return f
@@ -216,27 +175,30 @@ func (f *Factory) GetClient(clientType ClientType) (Client, error) {
 		if f.ollama == nil {
 			return nil, fmt.Errorf("Ollama client not initialized - check configuration")
 		}
-		return newOllamaClientAdapter(f.ollama, f.config), nil
+		// Pass limiter to adapter
+		return newOllamaClientAdapter(f.ollama, f.config, f.ollamaLimiter), nil
 
 	case Claude:
 		if f.claude == nil {
 			return nil, fmt.Errorf("Claude client not initialized - check configuration")
 		}
-		// If Ollama is also configured and Claude is set to use Ollama embeddings
+		// Pass limiter to adapter
 		if f.ollama != nil && f.config.Claude.EmbeddingModel == "ollama" {
-			return newClaudeClientAdapterWithOllama(f.claude, f.ollama, f.config), nil
+			// Pass both limiters if using Ollama for embeddings
+			return newClaudeClientAdapterWithOllama(f.claude, f.ollama, f.config, f.claudeLimiter, f.ollamaLimiter), nil
 		}
-		return newClaudeClientAdapter(f.claude, f.config), nil
+		return newClaudeClientAdapter(f.claude, f.config, f.claudeLimiter), nil
 
 	case Gemini:
 		if f.gemini == nil {
 			return nil, fmt.Errorf("Gemini client not initialized - check configuration")
 		}
-		// If Ollama is also configured and Gemini is set to use Ollama embeddings
+		// Pass limiter to adapter
 		if f.ollama != nil && f.config.Gemini.EmbeddingModel == "ollama" {
-			return newGeminiClientAdapterWithOllama(f.gemini, f.ollama, f.config), nil
+			// Pass both limiters if using Ollama for embeddings
+			return newGeminiClientAdapterWithOllama(f.gemini, f.ollama, f.config, f.geminiLimiter, f.ollamaLimiter), nil
 		}
-		return newGeminiClientAdapter(f.gemini, f.config), nil
+		return newGeminiClientAdapter(f.gemini, f.config, f.geminiLimiter), nil
 
 	default:
 		return nil, fmt.Errorf("unknown client type: %s", clientType)
@@ -247,26 +209,41 @@ func (f *Factory) GetClient(clientType ClientType) (Client, error) {
 func (f *Factory) GetDefaultClient() (Client, ClientType, error) {
 	defaultType := f.config.DefaultLLMProvider
 
+	// Try getting the default client first
 	client, err := f.GetClient(ClientType(defaultType))
-	if err != nil {
-		// Fallback to first available client
-		if f.gemini != nil {
-			return newGeminiClientAdapter(f.gemini, f.config), Gemini, nil
-		}
-		if f.claude != nil {
-			// If Ollama is also available, use it for embeddings
-			if f.ollama != nil {
-				return newClaudeClientAdapterWithOllama(f.claude, f.ollama, f.config), Claude, nil
-			}
-			return newClaudeClientAdapter(f.claude, f.config), Claude, nil
-		}
-		if f.ollama != nil {
-			return newOllamaClientAdapter(f.ollama, f.config), Ollama, nil
-		}
-		return nil, "", fmt.Errorf("no LLM clients initialized - check configuration")
+	if err == nil {
+		return client, ClientType(defaultType), nil
 	}
 
-	return client, ClientType(defaultType), nil
+	// Fallback to first available client
+	f.logger.Warn("Default LLM provider not available, falling back", "default", defaultType, "error", err)
+
+	if f.gemini != nil {
+		clientType := Gemini
+		var client Client
+		if f.ollama != nil && f.config.Gemini.EmbeddingModel == "ollama" {
+			client = newGeminiClientAdapterWithOllama(f.gemini, f.ollama, f.config, f.geminiLimiter, f.ollamaLimiter)
+		} else {
+			client = newGeminiClientAdapter(f.gemini, f.config, f.geminiLimiter)
+		}
+		return client, clientType, nil
+	}
+	if f.claude != nil {
+		clientType := Claude
+		var client Client
+		if f.ollama != nil && f.config.Claude.EmbeddingModel == "ollama" {
+			client = newClaudeClientAdapterWithOllama(f.claude, f.ollama, f.config, f.claudeLimiter, f.ollamaLimiter)
+		} else {
+			client = newClaudeClientAdapter(f.claude, f.config, f.claudeLimiter)
+		}
+		return client, clientType, nil
+	}
+	if f.ollama != nil {
+		clientType := Ollama
+		client := newOllamaClientAdapter(f.ollama, f.config, f.ollamaLimiter)
+		return client, clientType, nil
+	}
+	return nil, "", fmt.Errorf("no LLM clients initialized - check configuration")
 }
 
 // GetDefaultProviderConfig returns the configuration for the default provider

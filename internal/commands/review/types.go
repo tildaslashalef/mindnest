@@ -7,6 +7,9 @@ import (
 // Chunk is an alias for workspace.Chunk to avoid import issues
 type Chunk = workspace.Chunk
 
+// File is an alias for workspace.File to avoid import issues
+type File = workspace.File
+
 // Status represents the current status of the TUI
 type Status int
 

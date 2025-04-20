@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/tildaslashalef/mindnest/internal/config"
@@ -260,23 +261,37 @@ func (s *Service) ReviewFile(ctx context.Context, reviewID string, file *workspa
 	return reviewFile, nil
 }
 
-// ReviewFiles reviews multiple files
+// ReviewFiles reviews multiple files concurrently
 func (s *Service) ReviewFiles(ctx context.Context, reviewID string, files []*workspace.File, contents map[string]string, diffInfos map[string]string) ([]*ReviewFile, error) {
 	var reviewFiles []*ReviewFile
+	var wg sync.WaitGroup
+	var mu sync.Mutex
 
 	for _, file := range files {
-		content := contents[file.ID]
-		diffInfo := diffInfos[file.ID]
+		wg.Add(1)
 
-		reviewFile, err := s.ReviewFile(ctx, reviewID, file, content, diffInfo)
-		if err != nil {
-			s.logger.Warn("Error reviewing file", "file_id", file.ID, "error", err)
-			// Continue with other files
-			continue
-		}
+		go func(f *workspace.File) {
+			defer wg.Done()
 
-		reviewFiles = append(reviewFiles, reviewFile)
+			content := contents[f.ID]
+			diffInfo := diffInfos[f.ID]
+
+			reviewFile, err := s.ReviewFile(ctx, reviewID, f, content, diffInfo)
+			if err != nil {
+				s.logger.Warn("Error reviewing file", "file_id", f.ID, "error", err)
+				// Continue with other files, don't add to results
+				return
+			}
+
+			// Lock the mutex before appending to the shared slice
+			mu.Lock()
+			reviewFiles = append(reviewFiles, reviewFile)
+			mu.Unlock()
+		}(file) // Pass the file as an argument to the goroutine
 	}
+
+	// Wait for all goroutines to complete
+	wg.Wait()
 
 	return reviewFiles, nil
 }

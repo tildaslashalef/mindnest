@@ -53,7 +53,7 @@ func InitCommand() *cli.Command {
 			configFilePath := filepath.Join(configDir, ".env")
 
 			// Use the SetupConfigDirectory function which will create a dated backup if .env exists
-			if err := config.SetupConfigDirectory(configDir); err != nil {
+			if err := config.SetupConfigDirectory(configDir, true); err != nil {
 				utils.PrintWarning(fmt.Sprintf("Failed to set up configuration files: %s", err))
 				// Continue anyway as this is not critical
 			}

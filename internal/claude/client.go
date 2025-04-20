@@ -10,9 +10,9 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/cenkalti/backoff/v4"
+	"github.com/tildaslashalef/mindnest/internal/config"
 	"github.com/tildaslashalef/mindnest/internal/loggy"
 )
 
@@ -22,7 +22,7 @@ type Client struct {
 	apiKey           string
 	baseURL          string
 	defaultModel     string
-	httpClient       *http.Client
+	httpMultiClient  *http.Client
 	maxRetries       int
 	defaultMaxTokens int
 	apiVersion       string
@@ -33,24 +33,8 @@ type Client struct {
 	temperature      *float64
 }
 
-// Config configures the Claude client
-type Config struct {
-	APIKey           string        // API key for authentication
-	BaseURL          string        // Base URL for Claude API (e.g., "https://api.anthropic.com")
-	DefaultModel     string        // Default model to use if not specified in request
-	Timeout          time.Duration // HTTP client timeout
-	MaxRetries       int           // Maximum retries on retryable errors
-	DefaultMaxTokens int           // Default max tokens for generation
-	APIVersion       string        // API version to use (default: "2023-06-01")
-	UseAPIBeta       bool          // Whether to use API beta features
-	APIBeta          []string      // API beta features to enable
-	TopP             *float64      // Default top_p value
-	TopK             *int          // Default top_k value
-	Temperature      *float64      // Default temperature value
-}
-
 // NewClient creates a new Claude client from config
-func NewClient(cfg Config) *Client {
+func NewClient(cfg config.ClaudeConfig) *Client {
 	// Ensure baseURL doesn't end with a slash
 	baseURL := strings.TrimSuffix(cfg.BaseURL, "/")
 
@@ -61,13 +45,13 @@ func NewClient(cfg Config) *Client {
 	}
 
 	// Set default model if not provided
-	defaultModel := cfg.DefaultModel
+	defaultModel := cfg.Model
 	if defaultModel == "" {
-		defaultModel = "claude-3-7-sonnet-20250219"
+		defaultModel = "claude-3-5-sonnet-20241022"
 	}
 
 	// Set default max tokens if not provided
-	defaultMaxTokens := cfg.DefaultMaxTokens
+	defaultMaxTokens := cfg.MaxTokens
 	if defaultMaxTokens <= 0 {
 		defaultMaxTokens = 4096
 	}
@@ -89,19 +73,33 @@ func NewClient(cfg Config) *Client {
 		}
 	}
 
+	// Create pointers for optional parameters only if they have valid values
+	var tempPtr, topPPtr *float64
+	var topKPtr *int
+
+	if cfg.Temperature > 0 {
+		tempPtr = &cfg.Temperature
+	}
+	if cfg.TopP > 0 {
+		topPPtr = &cfg.TopP
+	}
+	if cfg.TopK > 0 {
+		topKPtr = &cfg.TopK
+	}
+
 	return &Client{
 		apiKey:           cfg.APIKey,
 		baseURL:          baseURL,
 		defaultModel:     defaultModel,
-		httpClient:       &http.Client{Timeout: cfg.Timeout},
+		httpMultiClient:  &http.Client{Timeout: cfg.Timeout},
 		maxRetries:       cfg.MaxRetries,
 		defaultMaxTokens: defaultMaxTokens,
 		apiVersion:       apiVersion,
 		useAPIBeta:       cfg.UseAPIBeta && len(validBeta) > 0,
 		apiBeta:          validBeta,
-		topP:             cfg.TopP,
-		topK:             cfg.TopK,
-		temperature:      cfg.Temperature,
+		topP:             topPPtr,
+		topK:             topKPtr,
+		temperature:      tempPtr,
 	}
 }
 
@@ -244,7 +242,7 @@ func (c *Client) handleStreamingRequest(ctx context.Context, req ChatRequest, re
 		}
 	}
 
-	resp, err := c.httpClient.Do(httpReq)
+	resp, err := c.httpMultiClient.Do(httpReq)
 	if err != nil {
 		return fmt.Errorf("sending request: %w", err)
 	}
@@ -363,7 +361,7 @@ func (c *Client) makeRequest(ctx context.Context, method, path string, body inte
 
 	var lastErr error
 	operation := func() error {
-		resp, err := c.httpClient.Do(req)
+		resp, err := c.httpMultiClient.Do(req)
 		if err != nil {
 			lastErr = fmt.Errorf("sending request: %w", err)
 			return lastErr
