@@ -25,9 +25,8 @@ Mindnest is an LLM-powered code review tool designed to help developers improve 
 - Privacy-first: all processing happens locally on your machine
 - Zero-configuration: embedded migrations and automatic setup
 
-## Disclaimer
-
-Mindnest is a toy project that I'm developing in my spare time. It's not production-ready and should not be used in any critical environments.
+> [!IMPORTANT]
+> **Disclaimer:** Mindnest is a personal side project under active (and sometimes breaking) development. Use with caution and expect rough edges!
 
 ## Installation
 

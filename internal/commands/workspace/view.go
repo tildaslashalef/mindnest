@@ -156,7 +156,7 @@ func (m Model) formatIssueContent() string {
 	// Affected Code
 	if issue.AffectedCode != "" {
 		content.WriteString(m.styles.Title.Render("Affected Code") + "\n")
-		affectedCode := renderCodeMarkdown(m, issue.AffectedCode, "go") // Assume Go, adjust if needed
+		affectedCode := renderCodeMarkdown(m, issue.AffectedCode, "go")
 		content.WriteString(affectedCode + "\n")
 	}
 
@@ -169,8 +169,8 @@ func (m Model) formatIssueContent() string {
 
 	// Code Snippet (Suggested Fix)
 	if issue.CodeSnippet != "" {
-		content.WriteString(m.styles.Title.Render("Suggested Fix (Code)") + "\n")
-		codeSnippet := renderCodeMarkdown(m, issue.CodeSnippet, "go") // Assume Go
+		content.WriteString(m.styles.Title.Render("Suggested Fix") + "\n")
+		codeSnippet := renderCodeMarkdown(m, issue.CodeSnippet, "go")
 		content.WriteString(codeSnippet + "\n")
 	}
 
