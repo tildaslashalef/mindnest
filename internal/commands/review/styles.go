@@ -1,5 +1,4 @@
-// Package tui provides terminal user interface for Mindnest
-package tui
+package review
 
 import (
 	"github.com/charmbracelet/lipgloss"

@@ -1,4 +1,4 @@
-package commands
+package review
 
 import (
 	"fmt"
@@ -8,7 +8,6 @@ import (
 
 	"github.com/tildaslashalef/mindnest/internal/app"
 	"github.com/tildaslashalef/mindnest/internal/loggy"
-	"github.com/tildaslashalef/mindnest/internal/tui"
 )
 
 // ReviewCommand returns the CLI command for the TUI interface
@@ -51,10 +50,10 @@ func reviewAction(c *cli.Context) error {
 	}
 
 	// Create TUI service
-	tuiService := tui.NewService(application)
+	tuiService := NewService(application)
 
 	// Set review options
-	reviewOptions := tui.ReviewOptions{
+	reviewOptions := ReviewOptions{
 		TargetDir:  cwd,
 		Staged:     staged,
 		CommitHash: commitHash,

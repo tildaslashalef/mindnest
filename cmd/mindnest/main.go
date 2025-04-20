@@ -10,6 +10,9 @@ import (
 
 	"github.com/tildaslashalef/mindnest/internal/app"
 	"github.com/tildaslashalef/mindnest/internal/commands"
+	"github.com/tildaslashalef/mindnest/internal/commands/review"
+	"github.com/tildaslashalef/mindnest/internal/commands/sync"
+	"github.com/tildaslashalef/mindnest/internal/commands/workspace"
 )
 
 // Version information - populated at build time
@@ -92,15 +95,15 @@ func main() {
 			return nil
 		},
 		Commands: []*cli.Command{
-			commands.ReviewCommand(),
-			commands.WorkspaceCommand(),
+			review.ReviewCommand(),
+			workspace.WorkspaceCommand(),
+			sync.SyncCommand(),
 			commands.MigrateCommand(),
-			commands.SyncCommand(),
 			commands.InitCommand(),
 		},
 		Action: func(c *cli.Context) error {
 			// Default action is to run the review command
-			return commands.ReviewCommand().Action(c)
+			return review.ReviewCommand().Action(c)
 		},
 	}
 
