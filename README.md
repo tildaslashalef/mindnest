@@ -11,6 +11,7 @@ Mindnest is an LLM-powered code review tool designed to help developers improve 
 ╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝╚═════╝ ╚═╝  ╚═══╝╚══════╝╚══════╝   ╚═╝   
 ```
 
+![Demo](demo.gif)
 
 ## Features
 
