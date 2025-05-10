@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Mindnest - AI-powered code review tool for developers. Improve code quality with LLM-powered reviews, context-aware analysis, and Git integration.">
+    
+    <title>Mindnest - AI-Powered Code Review</title>
+    
+    <!-- Favicon -->
+    <link rel="apple-touch-icon" sizes="180x180" href="./assets/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="./assets/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="./assets/favicon-16x16.png">
+    <link rel="manifest" href="./assets/site.webmanifest">
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="./css/main.css">
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <!-- Header -->
+    <header>
+      <div class="container">
+        <nav>
+          <a href="#" class="logo">
+            <img src="./assets/logo-dark.png" alt="Mindnest Logo" class="dark:hidden">
+            <img src="./assets/logo-light.png" alt="Mindnest Logo" class="dark:block">
+            <div class="logo-text">
+              <pre class="ascii-logo hidden md:block">
+                ███╗   ███╗██╗███╗   ██╗██████╗ ███╗   ██╗███████╗███████╗████████╗
+                ████╗ ████║██║████╗  ██║██╔══██╗████╗  ██║██╔════╝██╔════╝╚══██╔══╝
+                ██╔████╔██║██║██╔██╗ ██║██║  ██║██╔██╔╝ █████╗  ███████╗   ██║   
+                ██║╚██╔╝██║██║██║╚██╗██║██║  ██║██╔══██╗██╔══╝  ╚════██║   ██║   
+                ██║ ╚═╝ ██║██║██║ ╚████║██████╔╝██║  ██║███████╗███████║   ██║   
+                ╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝╚═════╝ ╚═╝  ╚═╝╚══════╝╚══════╝   ╚═╝
+            </pre>
+            </div>
+          </a>
+          
+          <div class="md:flex items-center space-x-2">
+            <a href="#features" class="nav-link">Features</a>
+            <a href="#demo" class="nav-link">Demo</a>
+            <a href="#quickstart" class="nav-link">Quick Start</a>
+            <a href="https://github.com/tildaslashalef/mindnest" target="_blank" rel="noopener" class="nav-link">GitHub</a>
+          </div>
+          
+          <div class="flex items-center space-x-4">
+            <!-- Theme toggle button -->
+            <button id="theme-toggle" type="button" aria-label="Toggle dark mode">
+              <!-- Sun icon -->
+              <svg id="theme-toggle-light-icon" class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                <path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" fill-rule="evenodd" clip-rule="evenodd"></path>
+              </svg>
+              <!-- Moon icon -->
+              <svg id="theme-toggle-dark-icon" class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path>
+              </svg>
+            </button>
+            
+            <!-- Mobile menu button -->
+            <button id="mobile-menu-toggle" type="button" class="md:hidden">
+              <span class="sr-only">Open main menu</span>
+              <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+              </svg>
+            </button>
+          </div>
+        </nav>
+        
+        <!-- Mobile menu -->
+        <div id="mobile-menu" class="hidden">
+          <div class="space-y-1">
+            <a href="#features">Features</a>
+            <a href="#demo">Demo</a>
+            <a href="#quickstart">Quick Start</a>
+            <a href="https://github.com/tildaslashalef/mindnest" target="_blank" rel="noopener">GitHub</a>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main>
+      <!-- Hero Section -->
+      <section id="hero" class="hero section-dark">
+        <div class="container">
+          <div class="flex flex-col md:flex-row items-center gap-8 md:gap-12">
+            <!-- Left content -->
+            <div class="md:w-1/2">
+              <h1>
+                <span class="hero-title-green">AI-powered</span> code reviews right in your terminal
+              </h1>
+              <p>
+                Get instant feedback on your code quality, best practices, and potential issues without leaving your development environment.
+              </p>
+              <div class="flex flex-wrap gap-4">
+                <a href="#" class="btn btn-primary">Get Started</a>
+                <a href="#features" class="btn btn-outline">Learn More</a>
+              </div>
+            </div>
+            <!-- Right content - Terminal demo -->
+            <div class="md:w-1/2">
+              <div class="terminal terminal-with-animation">
+                <div class="terminal-header">
+                  <div class="terminal-dots">
+                    <div class="terminal-dot terminal-dot-red"></div>
+                    <div class="terminal-dot terminal-dot-yellow"></div>
+                    <div class="terminal-dot terminal-dot-green"></div>
+                  </div>
+                  <div class="terminal-title">mindnest</div>
+                </div>
+                <div class="terminal-output">
+                  <div class="terminal-line terminal-line-animated"><span class="text-blue-400">$</span> <span class="text-white">curl -sSL https://mindnestapp.com/install.sh | sh</span></div>
+                  <div class="terminal-line terminal-line-animated"><span class="text-yellow-500">> Installing Mindnest CLI...</span></div>
+                  <div class="terminal-line terminal-line-animated"></div>
+                  <div class="terminal-line terminal-line-animated"><span class="text-green-500">✓ Mindnest CLI installed successfully!</span></div>
+                  <div class="terminal-line terminal-line-animated"></div>
+                  <div class="terminal-line terminal-line-animated"><span class="text-blue-400">$</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Features Section -->
+      <section id="features" class="features-section section-light">
+        <div class="container">
+          <h2 class="text-3xl md:text-4xl font-bold">Key Features</h2>
+          <p class="subtitle">Mindnest combines the power of local LLMs with intelligent code analysis to deliver insightful code reviews.</p>
+          
+          <div class="features-grid">
+            <!-- Feature 1 -->
+            <div class="feature-card">
+              <div class="feature-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M2.25 5.25a3 3 0 013-3h13.5a3 3 0 013 3V15a3 3 0 01-3 3h-3v3l-4.5-3H5.25a3 3 0 01-3-3V5.25z" />
+                </svg>
+              </div>
+              <h3 class="feature-title">AI-Powered Reviews</h3>
+              <p class="feature-description">Uses local LLMs (Ollama or Claude API) for intelligent code analysis without sending your code to external servers.</p>
+            </div>
+            
+            <!-- Feature 2 -->
+            <div class="feature-card">
+              <div class="feature-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M21.731 2.269a2.625 2.625 0 00-3.712 0l-1.157 1.157 3.712 3.712 1.157-1.157a2.625 2.625 0 000-3.712zM19.513 8.199l-3.712-3.712-12.15 12.15a5.25 5.25 0 00-1.32 2.214l-.8 2.685a.75.75 0 00.933.933l2.685-.8a5.25 5.25 0 002.214-1.32L19.513 8.2z" />
+                </svg>
+              </div>
+              <h3 class="feature-title">Context-Aware Analysis</h3>
+              <p class="feature-description">Vector embeddings help the LLM understand your codebase context for more accurate and relevant suggestions.</p>
+            </div>
+            
+            <!-- Feature 3 -->
+            <div class="feature-card">
+              <div class="feature-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M8.25 10.875a2.625 2.625 0 115.25 0 2.625 2.625 0 01-5.25 0zM12 18.75a7.5 7.5 0 10-7.5-7.5h15a7.5 7.5 0 10-7.5 7.5z" />
+                </svg>
+              </div>
+              <h3 class="feature-title">Git Integration</h3>
+              <p class="feature-description">Seamlessly review staged changes, specific commits, or branch differences with built-in Git integration.</p>
+            </div>
+            
+            <!-- Feature 4 -->
+            <div class="feature-card">
+              <div class="feature-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19.906 9c.382 0 .749.057 1.094.162V9a3 3 0 00-3-3h-1.372l-1.71-1.79a3 3 0 00-2.13-.918H9.622a3 3 0 00-2.132.919L5.78 6H4.334a3 3 0 00-3 3v6h4.172c.55 0 1.103.229 1.495.676l1.071 1.21a3 3 0 002.226 1.114h2.52a3 3 0 003-3H19.906z" />
+                </svg>
+              </div>
+              <h3 class="feature-title">Workspace Management</h3>
+              <p class="feature-description">Organize and track reviews across different projects with automatic workspace detection.</p>
+            </div>
+            
+            <!-- Feature 5 -->
+            <div class="feature-card">
+              <div class="feature-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M21 6.375c0 2.692-4.03 4.875-9 4.875S3 9.067 3 6.375 7.03 1.5 12 1.5s9 2.183 9 4.875z" />
+                  <path d="M12 12.75c2.685 0 5.19-.586 7.078-1.609a8.283 8.283 0 001.897-1.384c.016.121.025.244.025.368C21 12.817 16.97 15 12 15s-9-2.183-9-4.875c0-.124.009-.247.025-.368a8.285 8.285 0 001.897 1.384C6.809 12.164 9.315 12.75 12 12.75z" />
+                  <path d="M12 16.5c2.685 0 5.19-.586 7.078-1.609a8.282 8.282 0 001.897-1.384c.016.121.025.244.025.368 0 2.692-4.03 4.875-9 4.875s-9-2.183-9-4.875c0-.124.009-.247.025-.368a8.284 8.284 0 001.897 1.384C6.809 15.914 9.315 16.5 12 16.5z" />
+                  <path d="M12 20.25c2.685 0 5.19-.586 7.078-1.609a8.282 8.282 0 001.897-1.384c.016.121.025.244.025.368 0 2.692-4.03 4.875-9 4.875s-9-2.183-9-4.875c0-.124.009-.247.025-.368a8.284 8.284 0 001.897 1.384C6.809 19.664 9.315 20.25 12 20.25z" />
+                </svg>
+              </div>
+              <h3 class="feature-title">Intelligent Code Chunking</h3>
+              <p class="feature-description">Smart code chunking and similarity search to provide the most relevant context for accurate reviews.</p>
+            </div>
+            
+            <!-- Feature 6 -->
+            <div class="feature-card">
+              <div class="feature-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M5.566 4.657A4.505 4.505 0 016.75 4.5h10.5c.41 0 .806.055 1.183.157A3 3 0 0015.75 3h-7.5a3 3 0 00-2.684 1.657zM2.25 12a3 3 0 013-3h13.5a3 3 0 013 3v6a3 3 0 01-3 3H5.25a3 3 0 01-3-3v-6zM5.25 7.5c-.41 0-.806.055-1.184.157A3 3 0 016.75 6h10.5a3 3 0 012.683 1.657A4.505 4.505 0 0018.75 7.5H5.25z" />
+                </svg>
+              </div>
+              <h3 class="feature-title">Web Sync</h3>
+              <p class="feature-description">Seamlessly sync your CLI reviews with the web interface for team collaboration and tracking.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Demo Section -->
+      <section id="demo" class="demo-section">
+        <div class="container">
+          <h2 class="text-3xl md:text-4xl font-bold mb-4">See Mindnest in Action</h2>
+          <p class="subtitle">Watch how Mindnest provides intelligent, context-aware code reviews and integrates seamlessly with your workflow.</p>
+          
+          <div class="demo-terminal-container">
+            <!-- Demo terminal with animated steps -->
+            <div id="demo-terminal" class="terminal" style="min-height: 400px; position: relative;">
+              <!-- Terminal content will be dynamically generated by JavaScript -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Quick Start Section -->
+      <section id="quickstart" class="quickstart-section section-light">
+        <div class="container">
+          <h2 class="text-3xl md:text-4xl font-bold">Quick Start Guide</h2>
+          <p class="subtitle">Get started with Mindnest in just a few steps:</p>
+          
+          <div class="quickstart-container">
+            <div class="quickstart-steps">
+              <!-- Step 1 -->
+              <div class="step">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                  <h3>Install Mindnest CLI</h3>
+                  <p>Download and install the Mindnest CLI using our installation script.</p>
+                  <div class="terminal mt-4">
+                    <div class="terminal-header">
+                      <div class="terminal-dots">
+                        <div class="terminal-dot terminal-dot-red"></div>
+                        <div class="terminal-dot terminal-dot-yellow"></div>
+                        <div class="terminal-dot terminal-dot-green"></div>
+                      </div>
+                    </div>
+                    <div class="terminal-output">
+                      <div class="terminal-line">$ curl -sSL https://mindnestapp.com/install.sh | sh</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Step 2 -->
+              <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                  <h3>Install Prerequisites</h3>
+                  <p>For optimal performance, install Ollama for local embedding generation.</p>
+                  <div class="terminal mt-4">
+                    <div class="terminal-header">
+                      <div class="terminal-dots">
+                        <div class="terminal-dot terminal-dot-red"></div>
+                        <div class="terminal-dot terminal-dot-yellow"></div>
+                        <div class="terminal-dot terminal-dot-green"></div>
+                      </div>
+                    </div>
+                    <div class="terminal-output">
+                      <div class="terminal-line">$ curl -fsSL https://ollama.com/install.sh | sh</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Step 3 -->
+              <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                  <h3>Run Your First Review</h3>
+                  <p>Navigate to your project and run a code review.</p>
+                  <div class="terminal mt-4">
+                    <div class="terminal-header">
+                      <div class="terminal-dots">
+                        <div class="terminal-dot terminal-dot-red"></div>
+                        <div class="terminal-dot terminal-dot-yellow"></div>
+                        <div class="terminal-dot terminal-dot-green"></div>
+                      </div>
+                    </div>
+                    <div class="terminal-output">
+                      <div class="terminal-line">$ cd ~/project</div>
+                      <div class="terminal-line">$ mindnest</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Step 4 -->
+              <div class="step">
+                <div class="step-number">4</div>
+                <div class="step-content">
+                  <h3>Connect to Web Interface</h3>
+                  <p>Sync your CLI reviews with the web dashboard.</p>
+                  <div class="terminal mt-4">
+                    <div class="terminal-header">
+                      <div class="terminal-dots">
+                        <div class="terminal-dot terminal-dot-red"></div>
+                        <div class="terminal-dot terminal-dot-yellow"></div>
+                        <div class="terminal-dot terminal-dot-green"></div>
+                      </div>
+                    </div>
+                    <div class="terminal-output">
+                      <div class="terminal-line">$ mindnest sync account link --token YOUR-TOKEN</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Right side - Supported Features -->
+            <div class="rounded-lg border border-light-border dark:border-dark-border p-6 bg-white dark:bg-dark-surface">
+              <h3 class="text-xl font-bold mb-4">Supported Features</h3>
+              
+              <div class="mb-4">
+                <h4 class="font-semibold mb-2">Review Types</h4>
+                <ul class="list-disc ml-5 space-y-1 text-sm">
+                  <li>Staged changes (default)</li>
+                  <li>Specific commits (<code>--commit &lt;hash&gt;</code>)</li>
+                  <li>Branch difference (<code>--branch &lt;name&gt;</code>)</li>
+                </ul>
+              </div>
+              
+              <div class="mb-4">
+                <h4 class="font-semibold mb-2">LLM Options</h4>
+                <ul class="list-disc ml-5 space-y-1 text-sm">
+                  <li>Local Ollama models</li>
+                  <li>API: Claude (requires API key)</li>
+                </ul>
+              </div>
+              
+              <div class="mb-4">
+                <h4 class="font-semibold mb-2">Commands</h4>
+                <ul class="list-disc ml-5 space-y-1 text-sm">
+                  <li><code>mindnest</code> - Review code</li>
+                  <li><code>mindnest ws info</code> - Show workspace status</li>
+                  <li><code>mindnest sync</code> - Sync with web interface</li>
+                  <li><code>mindnest --help</code> - Show all commands</li>
+                </ul>
+              </div>
+              
+              <a href="#" class="text-primary text-sm hover:underline">View Full Documentation →</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CTA Section -->
+      <section id="cta" class="cta-section">
+        <div class="container">
+          <h2 class="text-3xl md:text-4xl font-bold">Ready to Improve Your Code?</h2>
+          <p>Start using Mindnest today and experience the power of AI-driven code reviews.</p>
+          <div class="cta-buttons">
+            <a href="#" class="btn btn-primary btn-cta">Download CLI</a>
+            <a href="#" class="btn btn-outline btn-cta">Access Dashboard</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer>
+      <div class="container">
+        <div class="footer-content">
+          <div class="footer-logo-container">
+            <a href="#" class="footer-logo">
+              <img src="./assets/logo-dark.png" alt="Mindnest" class="dark:hidden">
+              <img src="./assets/logo-light.png" alt="Mindnest" class="dark:block">
+              <div class="logo-text">
+                <span>MINDNEST</span>
+              </div>
+            </a>
+          </div>
+          
+          <div class="footer-links">
+            <h3>Product</h3>
+            <ul>
+              <li><a href="#features">Features</a></li>
+              <li><a href="#demo">Demo</a></li>
+              <li><a href="#quickstart">Quick Start</a></li>
+              <li><a href="#">Dashboard</a></li>
+            </ul>
+          </div>
+          
+          <div class="footer-links">
+            <h3>Resources</h3>
+            <ul>
+              <li><a href="#">Documentation</a></li>
+              <li><a href="https://github.com/tildaslashalef/mindnest">GitHub</a></li>
+              <li><a href="#">Blog</a></li>
+              <li><a href="#">Changelog</a></li>
+            </ul>
+          </div>
+          
+          <div class="footer-links">
+            <h3>Company</h3>
+            <ul>
+              <li><a href="#">About</a></li>
+              <li><a href="#">Contact</a></li>
+              <li><a href="#">Privacy</a></li>
+              <li><a href="#">Terms</a></li>
+            </ul>
+          </div>
+        </div>
+        
+        <div class="footer-bottom">
+          <p class="copyright">&copy; <span id="current-year">2023</span> Mindnest. All rights reserved.</p>
+          
+          <div class="social-links">
+            <a href="#" class="social-link" aria-label="Twitter">
+              <svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8.29 20.251c7.547 0 11.675-6.253 11.675-11.675 0-.178 0-.355-.012-.53A8.348 8.348 0 0022 5.92a8.19 8.19 0 01-2.357.646 4.118 4.118 0 001.804-2.27 8.224 8.224 0 01-2.605.996 4.107 4.107 0 00-6.993 3.743 11.65 11.65 0 01-8.457-4.287 4.106 4.106 0 001.27 5.477A4.072 4.072 0 012.8 9.713v.052a4.105 4.105 0 003.292 4.022 4.095 4.095 0 01-1.853.07 4.108 4.108 0 003.834 2.85A8.233 8.233 0 012 18.407a11.616 11.616 0 006.29 1.84" />
+              </svg>
+            </a>
+            
+            <a href="https://github.com/tildaslashalef/mindnest" class="social-link" aria-label="GitHub">
+              <svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd" />
+              </svg>
+            </a>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="./js/main.js"></script>
+    <script>
+      // Update current year in footer
+      document.getElementById('current-year').textContent = new Date().getFullYear();
+    </script>
+  </body>
+</html> 
